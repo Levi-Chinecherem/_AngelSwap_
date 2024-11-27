@@ -1,26 +1,18 @@
-// scripts/deployLiquidityPool.js
-
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
 
 async function main() {
-    // The addresses of the ANGEL token (mintable token) and the secondary token
-    const angelTokenAddress = "0xYourAngelTokenAddress"; // Replace with your ANGEL token address
-    const secondaryTokenAddress = "0xYourSecondaryTokenAddress"; // Replace with your secondary ERC20 token address
+    // Get the LiquidityPool contract to deploy
+    const LiquidityPool = await hre.ethers.getContractFactory("LiquidityPool");
 
-    // Deploy the LiquidityPool contract
-    const LiquidityPool = await ethers.getContractFactory("LiquidityPool");
-    const liquidityPool = await LiquidityPool.deploy(angelTokenAddress, secondaryTokenAddress);
+    console.log("Deploying LiquidityPool implementation...");
+    const liquidityPool = await LiquidityPool.deploy();
+
     await liquidityPool.deployed();
+    console.log("LiquidityPool implementation deployed to:", liquidityPool.address);
 
-    console.log(`LiquidityPool deployed to: ${liquidityPool.address}`);
-
-    // Optionally, you can also interact with the deployed contract (e.g., set initial configurations, etc.)
 }
 
-// Execute the deployment script
-main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-        console.error(error);
-        process.exit(1);
-    });
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -1,8 +1,8 @@
-// scripts/deployOtherToken.js
-
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
 
 async function main() {
+    const { ethers } = hre;
+
     const [deployer] = await ethers.getSigners();
 
     console.log("Deploying contracts with the account:", deployer.address);
@@ -10,15 +10,15 @@ async function main() {
     const OtherToken = await ethers.getContractFactory("OtherToken");
 
     // Initialize the tokens with name, symbol, and initial supply
-    const ngnToken = await OtherToken.deploy("NGN Token", "NGN", ethers.utils.parseUnits("1000000", 18));
+    const ngnToken = await OtherToken.deploy("NGN Token", "NGN", ethers.utils.parseUnits("100000000", 18));
     await ngnToken.deployed();
     console.log("NGN Token deployed to:", ngnToken.address);
 
-    const ekeToken = await OtherToken.deploy("EKE", "EKE", ethers.utils.parseUnits("1000000", 18));
+    const ekeToken = await OtherToken.deploy("EKE", "EKE", ethers.utils.parseUnits("10000000", 18));
     await ekeToken.deployed();
     console.log("EKE Token deployed to:", ekeToken.address);
 
-    const onuToken = await OtherToken.deploy("ONU", "ONU", ethers.utils.parseUnits("1000000", 18));
+    const onuToken = await OtherToken.deploy("ONU", "ONU", ethers.utils.parseUnits("10000000", 18));
     await onuToken.deployed();
     console.log("ONU Token deployed to:", onuToken.address);
 

@@ -1,0 +1,36 @@
+we have about 5 tokens so how will this allow users to claim those tokens and if its ANGEL token they want to claim it will mint the new value direct to them.
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract Faucet {
+    
+    address public owner;
+    address public token;
+    uint256 public claimAmount;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the owner");
+        _;
+    }
+
+    event Claimed(address indexed user, uint256 amount);
+
+    constructor(address _token, uint256 _claimAmount) {
+        token = IERC20(_token);
+        claimAmount = _claimAmount;
+    }
+
+    function claim() external {
+        require(token.balanceOf(address(this)) >= claimAmount, "Faucet is out of tokens");
+        token.transfer(msg.sender, claimAmount);
+        emit Claimed(msg.sender, claimAmount);
+    }
+
+    // Only owner can update claim amount
+    function setClaimAmount(uint256 _newAmount) external onlyOwner {
+        claimAmount = _newAmount;
+    }
+}

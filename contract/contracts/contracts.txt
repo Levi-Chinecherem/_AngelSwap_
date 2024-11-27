@@ -1,0 +1,33 @@
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)              
+λ npx hardhat run scripts/deployAngelToken.js --network pulsechain                              
+Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641                
+AngelToken deployed to: 0xC28a443f94F01dB36796b9dcE0A5f880aAe43c6f                              
+            
+                                                                                          
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)              
+λ npx hardhat run scripts/deployOtherTokens.js --network pulsechain                             
+Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641                
+NGN Token deployed to: 0x3955FFBB3e63F898eDe0DD3DAd6fb1e1685c3b52                               
+EKE Token deployed to: 0x30dBE7909a36bEd5f51C9a91B9856B8314772c4F                               
+ONU Token deployed to: 0xdC7fD7f7DF8a0b9A4E2b78120d00D7A0fc512c9b                               
+HALO Token deployed to: 0x8b6216C7aEf94a93f2556FD936ed8f55Cf65f9aC                              
+
+
+                        second phase                                                                     
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
+λ npx hardhat run scripts/deployOtherTokens.js --network pulsechain
+Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641
+NGN Token deployed to: 0x3955FFBB3e63F898eDe0DD3DAd6fb1e1685c3b52
+EKE Token deployed to: 0x30dBE7909a36bEd5f51C9a91B9856B8314772c4F
+ONU Token deployed to: 0xdC7fD7f7DF8a0b9A4E2b78120d00D7A0fc512c9b
+HALO Token deployed to: 0x8b6216C7aEf94a93f2556FD936ed8f55Cf65f9aC
+
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
+λ npx hardhat run scripts/deployERC20Tokens.js --network pulsechain
+Compiled 2 Solidity files successfully (evm target: paris).
+Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641
+ProfEkeToken deployed to: 0x550677E5a1267dA3380097630fF91a64cB45Dc3e
+ProfOnuoduToken deployed to: 0xA674392A0eEFaB466FAD4b7286b084325Dec70a9
+NGNToken deployed to: 0x4984912f85c01a69D4AAFa4A9F1E1Df14cEd7483
+AngelToken deployed to: 0x7C2D3EA0F21d3d2F0D9b1bc915d56D20534D38BC
+HaloToken deployed to: 0xA3B3ab9A3602b74346Af1225825dEAcf48488605

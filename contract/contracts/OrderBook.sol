@@ -15,6 +15,10 @@ contract OrderBook is Ownable {
         uint256 timestamp;
     }
 
+    constructor() Ownable(msg.sender) {
+        // msg.sender is automatically set as the owner
+    }
+    
     struct Transaction {
         address user;
         uint256 orderId;
