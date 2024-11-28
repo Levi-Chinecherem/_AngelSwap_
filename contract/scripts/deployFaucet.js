@@ -5,19 +5,15 @@ async function main() {
   await hre.run("compile");
 
   // Define token addresses
-  const angelTokenAddress = "<ANGEL_TOKEN_ADDRESS>"; // Replace with the deployed AngelToken address
-  const otherTokens = [
-    "<NGN_TOKEN_ADDRESS>", // NGN token address
-    "<EKE_TOKEN_ADDRESS>", // EKE token address
-    "<ONU_TOKEN_ADDRESS>", // ONU token address
-    "<HALO_TOKEN_ADDRESS>", // HALO token address
-  ];
+  const angelTokenAddress = "0xC28a443f94F01dB36796b9dcE0A5f880aAe43c6f"; // Replace with the deployed AngelToken address
+  const claimAmount = ethers.utils.parseUnits("5", 18); // Example: 5 ANGEL tokens (adjust decimals as needed)
+  const claimCooldown = 86400; // Example: 24 hours in seconds
 
   // Get the Faucet contract factory
   const Faucet = await hre.ethers.getContractFactory("Faucet");
 
   // Deploy the Faucet contract
-  const faucet = await Faucet.deploy(angelTokenAddress, otherTokens);
+  const faucet = await Faucet.deploy(angelTokenAddress, claimAmount, claimCooldown);
   await faucet.deployed();
 
   console.log(`Faucet deployed at address: ${faucet.address}`);

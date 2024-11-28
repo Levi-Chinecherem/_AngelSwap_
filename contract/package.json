@@ -11,12 +11,14 @@
   "description": "",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-etherscan": "^3.1.8",
     "ethers": "^5.7.2",
     "hardhat": "^2.22.16"
   },
   "dependencies": {
     "@nomicfoundation/hardhat-ignition": "^0.15.8",
     "@openzeppelin/contracts": "^5.1.0",
+    "axios": "^1.7.8",
     "dotenv": "^16.4.5"
   }
 }
