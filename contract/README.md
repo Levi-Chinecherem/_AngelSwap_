@@ -93,7 +93,7 @@ The Order Book contract matches buy and sell orders, enabling decentralized trad
 ### Deployment Steps
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Levi-Chinecherem/AngelSwap.git
+   git clone https://github.com/Levi-Chinecherem/_AngelSwap_.git
    cd AngelSwap/contract
    ```
 2. Install dependencies:
@@ -153,7 +153,7 @@ The following are the deployed contract addresses on the PulseChain network:
 
 | Contract                | Address                                    |
 |-------------------------|--------------------------------------------|
-| **AngelToken**          | `0xC28a443f94F01dB36796b9dcE0A5f880aAe43c6f` |
+| **Angel Token**          | `0xC28a443f94F01dB36796b9dcE0A5f880aAe43c6f` |
 | **NGN Token**           | `0x3955FFBB3e63F898eDe0DD3DAd6fb1e1685c3b52` |
 | **EKE Token**           | `0x30dBE7909a36bEd5f51C9a91B9856B8314772c4F` |
 | **ONU Token**           | `0xdC7fD7f7DF8a0b9A4E2b78120d00D7A0fc512c9b` |
