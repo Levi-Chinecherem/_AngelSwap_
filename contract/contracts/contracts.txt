@@ -13,21 +13,20 @@ ONU Token deployed to: 0xdC7fD7f7DF8a0b9A4E2b78120d00D7A0fc512c9b
 HALO Token deployed to: 0x8b6216C7aEf94a93f2556FD936ed8f55Cf65f9aC                              
 
 
-                        second phase                                                                     
 C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
-λ npx hardhat run scripts/deployOtherTokens.js --network pulsechain
-Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641
-NGN Token deployed to: 0x3955FFBB3e63F898eDe0DD3DAd6fb1e1685c3b52
-EKE Token deployed to: 0x30dBE7909a36bEd5f51C9a91B9856B8314772c4F
-ONU Token deployed to: 0xdC7fD7f7DF8a0b9A4E2b78120d00D7A0fc512c9b
-HALO Token deployed to: 0x8b6216C7aEf94a93f2556FD936ed8f55Cf65f9aC
+λ npx hardhat run scripts/deployFaucet.js --network pulsechain
+Nothing to compile
+Faucet deployed at address: 0xFE7EE287CcA1092BD1B3B7B19b807295180CE801
 
 C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
-λ npx hardhat run scripts/deployERC20Tokens.js --network pulsechain
-Compiled 2 Solidity files successfully (evm target: paris).
-Deploying contracts with the account: 0xA990D48481647ec886200a838F43c2A9bbbbB641
-ProfEkeToken deployed to: 0x550677E5a1267dA3380097630fF91a64cB45Dc3e
-ProfOnuoduToken deployed to: 0xA674392A0eEFaB466FAD4b7286b084325Dec70a9
-NGNToken deployed to: 0x4984912f85c01a69D4AAFa4A9F1E1Df14cEd7483
-AngelToken deployed to: 0x7C2D3EA0F21d3d2F0D9b1bc915d56D20534D38BC
-HaloToken deployed to: 0xA3B3ab9A3602b74346Af1225825dEAcf48488605
+λ npx hardhat run scripts/deployLiquidityPool.js --network pulsechain
+Deploying LiquidityPool implementation...
+LiquidityPool implementation deployed to: 0xf29283041b2F6401EF8d00B6754AcC05e8440174
+
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
+λ npx hardhat run scripts/deployLiquidityPoolFactory.js --network pulsechain
+LiquidityPoolFactory deployed to: 0x9e6Ea38aFAFe380321279A379009E7F3F0cc4101
+
+C:\development\web3\AngelSwap\contract (main -> origin) (angelswap-contract@1.0.0)
+λ npx hardhat run scripts/deployOrderBook.js --network pulsechain
+OrderBook deployed to: 0x312897bF6C79c4774f36c3d1457E0E0A3fdDFEc7

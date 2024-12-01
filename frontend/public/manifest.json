@@ -1,0 +1,25 @@
+{
+  "short_name": "AngelSwap",
+  "name": "This decentralized platform allows users to trade tokens on a decentralized exchange (DEX), with additional features such as limit orders, a liquidity pool, dynamic token creation, a faucet, an order book, and zk-proof security.",
+  "icons": [
+    {
+      "src": "logo.jpg",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo.jpg",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo.jpg",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
