@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import OrderBook from '../components/OrderBook';
 
 const Swap = () => {
   const [activeTab, setActiveTab] = useState('market');
@@ -40,6 +41,7 @@ const Swap = () => {
   };
 
   return (
+    <>
     <div className="container mx-auto px-4 py-8 pt-20">
       <div className="flex justify-center">
         <div className="w-full max-w-lg bg-card shadow-2xl p-6">
@@ -183,6 +185,8 @@ const Swap = () => {
         </div>
       </div>
     </div>
+    <OrderBook />
+    </>
   );
 };
 
