@@ -58,6 +58,15 @@ const NavBar = () => {
           </li>
           <li>
             <a
+              href="/liquidity"
+              className="hover:text-sciFiAccent text-white"
+              onClick={() => setShowMenu(false)}
+            >
+              Liquidity
+            </a>
+          </li>
+          <li>
+            <a
               href="/mempool"
               className="hover:text-sciFiAccent text-white"
               onClick={() => setShowMenu(false)}
@@ -83,7 +92,7 @@ const NavBar = () => {
               About
             </a>
           </li>
-          <li>
+        </ul>
             <div className="flex items-center space-x-2">
               <span className="text-sm text-white">Security:</span>
               <div
@@ -102,8 +111,6 @@ const NavBar = () => {
                 </span>
               </div>
             </div>
-          </li>
-        </ul>
       </nav>
     </header>
   );

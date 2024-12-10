@@ -1,3 +1,96 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+    background: #1A1A2E;
+    font-family: 'Roboto', sans-serif;
+    color: #e1e1e1;
+    overflow-x: hidden;
+}
+
+.btn-glow {
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s ease;
+}
+
+.btn-glow::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    background: #FF4C60;
+    border-radius: 50%;
+    z-index: -1;
+    transform: scale(0);
+    transition: all 0.3s ease;
+}
+
+.btn-glow:hover::after {
+    transform: scale(1);
+    top: 0;
+    left: 0;
+}
+
+.btn-glow:hover {
+    color: #a14d57;
+}
+
+.input-glow:focus {
+    border-color: #FF4C60;
+    box-shadow: 0 0 10px #FF4C60;
+}
+
+.bg-card {
+    background: linear-gradient(135deg, #7c4148, #03111f);
+    border-radius: 12px;
+}
+
+.nav-button {
+    background-color: #FF4C60;
+    border: none;
+    color: #fff;
+    transition: all 0.3s ease;
+}
+
+.nav-button:hover {
+    background-color: #a14d57;
+}
+
+.container {
+    max-width: 1200px;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.arrow-btn {
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.arrow-btn:hover {
+    transform: scale(1.2);
+}
+
+.tab-secondary {
+    background-color: #9b3743;
+    color: #fff;
+}
+
+.tab-secondary:hover {
+    background-color: #a14d57;
+}
+
+.tab-active {
+    background-color: #FF4C60;
+    color: #fff;
+}
