@@ -5,7 +5,7 @@ async function main() {
   await hre.run("compile");
 
   // Define token addresses
-  const angelTokenAddress = "0xC28a443f94F01dB36796b9dcE0A5f880aAe43c6f"; // Replace with the deployed AngelToken address
+  const angelTokenAddress = "0xCB32472D3cf39dD88Aeb261139D9906a12dA7403"; // Replace with the deployed AngelToken address
   const claimAmount = ethers.utils.parseUnits("5", 18); // Example: 5 ANGEL tokens (adjust decimals as needed)
   const claimCooldown = 86400; // Example: 24 hours in seconds
 

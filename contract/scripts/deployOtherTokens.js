@@ -14,11 +14,11 @@ async function main() {
     await ngnToken.deployed();
     console.log("NGN Token deployed to:", ngnToken.address);
 
-    const ekeToken = await OtherToken.deploy("EKE", "EKE", ethers.utils.parseUnits("10000000", 18));
+    const ekeToken = await OtherToken.deploy("Prof. Eke Token", "EKE", ethers.utils.parseUnits("10000000", 18));
     await ekeToken.deployed();
     console.log("EKE Token deployed to:", ekeToken.address);
 
-    const onuToken = await OtherToken.deploy("ONU", "ONU", ethers.utils.parseUnits("10000000", 18));
+    const onuToken = await OtherToken.deploy("Prof. Onuodu Token", "ONU", ethers.utils.parseUnits("10000000", 18));
     await onuToken.deployed();
     console.log("ONU Token deployed to:", onuToken.address);
 

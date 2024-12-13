@@ -3,8 +3,9 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract LiquidityPool is Ownable {
+contract LiquidityPool is Ownable, ReentrancyGuard {
     IERC20 public token1; // Main token
     IERC20 public token2; // Secondary token
     uint256 public totalLiquidity1;
@@ -20,6 +21,8 @@ contract LiquidityPool is Ownable {
     uint256 public delayTime = 5; // Time delay for transaction revealing (in seconds)
 
     bool public isInitialized; // Ensures the pool is initialized only once
+
+    uint256 public feeRate = 20; // Fee rate in basis points (0.2%)
 
     constructor() Ownable(msg.sender) {
         // msg.sender is automatically set as the owner
@@ -70,21 +73,31 @@ contract LiquidityPool is Ownable {
         emit RewardsDeposited(amount);
     }
 
-    function swap(address fromToken, uint256 amountIn) external onlyInitialized {
+    function swap(address fromToken, uint256 amountIn, uint256 minAmountOut) external nonReentrant onlyInitialized {
         require(fromToken == address(token1) || fromToken == address(token2), "Invalid token");
+        require(amountIn > 0, "Amount must be greater than zero");
 
         uint256 amountOut;
+        uint256 fee = (amountIn * feeRate) / 10000; // Calculate the fee (0.2%)
+        uint256 netAmountIn = amountIn - fee;
+
         if (fromToken == address(token1)) {
-            amountOut = getAmountOut(amountIn, totalLiquidity1, totalLiquidity2);
+            amountOut = getAmountOut(netAmountIn, totalLiquidity1, totalLiquidity2);
+            require(amountOut >= minAmountOut, "Slippage protection failed");
+
             require(token1.transferFrom(msg.sender, address(this), amountIn), "Token transfer failed");
             require(token2.transfer(msg.sender, amountOut), "Token transfer failed");
-            totalLiquidity1 += amountIn;
+
+            totalLiquidity1 += netAmountIn;
             totalLiquidity2 -= amountOut;
         } else {
-            amountOut = getAmountOut(amountIn, totalLiquidity2, totalLiquidity1);
+            amountOut = getAmountOut(netAmountIn, totalLiquidity2, totalLiquidity1);
+            require(amountOut >= minAmountOut, "Slippage protection failed");
+
             require(token2.transferFrom(msg.sender, address(this), amountIn), "Token transfer failed");
             require(token1.transfer(msg.sender, amountOut), "Token transfer failed");
-            totalLiquidity2 += amountIn;
+
+            totalLiquidity2 += netAmountIn;
             totalLiquidity1 -= amountOut;
         }
 
@@ -112,7 +125,7 @@ contract LiquidityPool is Ownable {
         delete transactions[txHash];
     }
 
-    function provideLiquidity(uint256 amount1, uint256 amount2) external onlyInitialized {
+    function provideLiquidity(uint256 amount1, uint256 amount2) external nonReentrant onlyInitialized {
         require(amount1 > 0 && amount2 > 0, "Amounts must be greater than zero");
         require(token1.transferFrom(msg.sender, address(this), amount1), "Token1 transfer failed");
         require(token2.transferFrom(msg.sender, address(this), amount2), "Token2 transfer failed");
@@ -127,7 +140,7 @@ contract LiquidityPool is Ownable {
         emit ProvideLiquidity(msg.sender, amount1, amount2);
     }
 
-    function removeLiquidity(uint256 amount1, uint256 amount2) external onlyInitialized {
+    function removeLiquidity(uint256 amount1, uint256 amount2) external nonReentrant onlyInitialized {
         require(userLiquidity1[msg.sender] >= amount1, "Insufficient liquidity in token1");
         require(userLiquidity2[msg.sender] >= amount2, "Insufficient liquidity in token2");
 
@@ -150,7 +163,7 @@ contract LiquidityPool is Ownable {
         return pendingRewards;
     }
 
-    function distributeRewards() external onlyInitialized {
+    function distributeRewards() external nonReentrant onlyInitialized {
         require(userLiquidity1[msg.sender] + userLiquidity2[msg.sender] > 0, "No liquidity provided");
 
         uint256 pendingRewards = calculatePendingRewards(msg.sender);
