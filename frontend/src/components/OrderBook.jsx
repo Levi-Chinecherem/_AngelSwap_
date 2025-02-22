@@ -56,19 +56,7 @@ const OrderBook = () => {
 
   return (
     <div className="bg-sciFiBg text-sciFiText font-sans">
-      {/* Navbar */}
-      <header className="fixed top-0 w-full z-50 bg-sciFiBg shadow-lg">
-        <nav className="max-w-7xl mx-auto flex justify-between items-center p-4">
-          <a href="index.html" className="text-2xl font-bold text-sciFiAccent">AngelSwap</a>
-          <ul className="hidden md:flex space-x-6">
-            <li><a href="index.html" className="hover:text-sciFiAccent">Home</a></li>
-            <li><a href="swap.html" className="hover:text-sciFiAccent">Swap</a></li>
-            <li><a href="orderbook.html" className="hover:text-sciFiAccent text-sciFiAccent">Order Book</a></li>
-            <li><a href="history.html" className="hover:text-sciFiAccent">History</a></li>
-            <li><a href="about.html" className="hover:text-sciFiAccent">About</a></li>
-          </ul>
-        </nav>
-      </header>
+      
 
       {/* Order Book Section */}
       <section className="pt-20 pb-16 px-4">
@@ -121,10 +109,6 @@ const OrderBook = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 bg-gray-900 text-center">
-        <p className="text-gray-400 text-sm">© 2024 AngelSwap. All rights reserved.</p>
-      </footer>
     </div>
   );
 };

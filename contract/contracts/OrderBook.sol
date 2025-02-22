@@ -33,6 +33,8 @@ contract OrderBook is Ownable {
     uint256 public orderCount;
     uint256 public delayTime = 5; // Time delay for unhashing transactions (seconds)
 
+    address[] public tokens; // List of tokens in the order book
+
     // Events
     event SecurityToggled(address indexed user, bool isEnabled);
     event OrderPlaced(uint256 indexed orderId, address indexed user, address indexed token, uint256 amount, uint256 price, bool isBuyOrder, bool isPrivate);
@@ -124,5 +126,14 @@ contract OrderBook is Ownable {
         uint256 numerator = amountIn * reserveOut;
         uint256 denominator = reserveIn + amountIn;
         return numerator / denominator;
+    }
+
+    function getAllTokens() external view returns (address[] memory) {
+        return tokens;
+    }
+
+    function addToken(address token) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        tokens.push(token);
     }
 }

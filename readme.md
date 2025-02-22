@@ -123,3 +123,6 @@ The platform relies on decentralized principles for trustless execution and tran
 ### **Conclusion**
 
 This system is designed to be a decentralized exchange platform with advanced features like limit orders, dynamic token creation, and enhanced security with zk-proof privacy. It combines the essential components of token management, trading, liquidity provision, and user onboarding in a seamless and scalable way. The platform ensures a rich user experience while maintaining decentralization, security, and flexibility for future expansion. Each component, from the smart contracts to the frontend interface, works together to provide a fully functional decentralized trading experience with a focus on privacy and security.
+
+
+npm install @reduxjs/toolkit react-redux ethers

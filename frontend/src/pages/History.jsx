@@ -1,120 +1,338 @@
 import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { ethers } from 'ethers';
+import {
+  fetchUserTransactions,
+  fetchTokenBalances,
+  fetchPoolDetails,
+  fetchAllTokens,
+  fetchPendingRewards,
+  revealTransaction,
+} from '../store/slices/liquidityPoolSlice';
+import { fetchOrders } from '../store/slices/orderBookSlice'; // Import from orderBookSlice
 
 const History = () => {
-  const transactionsPerPage = 10;
+  const dispatch = useDispatch();
+  const ITEMS_PER_PAGE = 10;
+  const MAX_HISTORY = 50;
   const [currentPage, setCurrentPage] = useState(1);
-  const [transactions, setTransactions] = useState([]);
-  
+  const [activeFilter, setActiveFilter] = useState('all');
+
+  // Liquidity pool state
+  const {
+    transactions: liquidityTransactions,
+    loading: liquidityLoading,
+    error: liquidityError,
+    poolDetails,
+    token1Balance,
+    token2Balance,
+    pendingRewards,
+    userLiquidity1,
+    userLiquidity2,
+    token1,
+    token2,
+    securityEnabled,
+  } = useSelector((state) => state.liquidityPool);
+
+  // Order book state
+  const {
+    orders,
+    loading: orderBookLoading,
+    error: orderBookError,
+  } = useSelector((state) => state.orderBook);
+
+  // Combine loading and error states
+  const loading = liquidityLoading || orderBookLoading;
+  const error = liquidityError || orderBookError;
+
+  // Fetch data from both slices
   useEffect(() => {
-    // Sample transaction data
-    const transactionData = [
-      { id: '123456', from: '0xabc123...', to: '0xdef456...', amount: '1000 ABC', date: '2024-11-22 12:34' },
-      { id: '123457', from: '0xghi789...', to: '0xjkl012...', amount: '2000 DEF', date: '2024-11-21 14:22' },
-      { id: '123458', from: '0xghi789...', to: '0xjkl012...', amount: '1500 XYZ', date: '2024-11-20 11:10' },
-      { id: '123459', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-19 10:10' },
-      { id: '123460', from: '0xghi789...', to: '0xjkl012...', amount: '2500 GHI', date: '2024-11-18 09:15' },
-      { id: '123461', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-17 08:00' },
-      { id: '123462', from: '0xghi789...', to: '0xjkl012...', amount: '2000 DEF', date: '2024-11-16 07:10' },
-      { id: '123463', from: '0xghi789...', to: '0xjkl012...', amount: '1500 XYZ', date: '2024-11-15 06:30' },
-      { id: '123464', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-14 05:20' },
-      { id: '123465', from: '0xghi789...', to: '0xjkl012...', amount: '2000 DEF', date: '2024-11-13 04:40' },
-      { id: '123466', from: '0xghi789...', to: '0xjkl012...', amount: '2500 GHI', date: '2024-11-12 03:50' },
-      { id: '123467', from: '0xghi789...', to: '0xjkl012...', amount: '1500 XYZ', date: '2024-11-11 02:45' },
-      { id: '123468', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-10 01:30' },
-      { id: '123469', from: '0xghi789...', to: '0xjkl012...', amount: '2000 DEF', date: '2024-11-09 00:40' },
-      { id: '123470', from: '0xghi789...', to: '0xjkl012...', amount: '1500 XYZ', date: '2024-11-08 23:50' },
-      { id: '123471', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-07 22:35' },
-      { id: '123472', from: '0xghi789...', to: '0xjkl012...', amount: '2500 GHI', date: '2024-11-06 21:25' },
-      { id: '123473', from: '0xghi789...', to: '0xjkl012...', amount: '1500 XYZ', date: '2024-11-05 20:15' },
-      { id: '123474', from: '0xghi789...', to: '0xjkl012...', amount: '1000 ABC', date: '2024-11-04 19:05' },
-      { id: '123475', from: '0xghi789...', to: '0xjkl012...', amount: '2000 DEF', date: '2024-11-03 18:00' },
-    ];
-    setTransactions(transactionData);
-  }, []);
+    const fetchData = async () => {
+      if (window.ethereum) {
+        try {
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          const signer = provider.getSigner();
+          const address = await signer.getAddress();
 
-  const renderTransactions = () => {
-    const startIndex = (currentPage - 1) * transactionsPerPage;
-    const endIndex = Math.min(startIndex + transactionsPerPage, transactions.length);
-    const currentPageTransactions = transactions.slice(startIndex, endIndex);
+          await Promise.all([
+            dispatch(fetchUserTransactions(address)), // Fetch liquidity pool transactions
+            dispatch(fetchOrders(address)), // Fetch order book transactions
+            dispatch(fetchTokenBalances(address)),
+            dispatch(fetchPoolDetails(address)),
+            dispatch(fetchAllTokens()),
+            dispatch(fetchPendingRewards(address)),
+          ]);
+        } catch (error) {
+          console.error('Error fetching data:', error);
+        }
+      }
+    };
 
-    return currentPageTransactions.map(transaction => (
-      <tr key={transaction.id} className="border-t border-gray-700">
-        <td className="px-6 py-4 text-gray-300">{transaction.id}</td>
-        <td className="px-6 py-4 text-gray-300">{transaction.from}</td>
-        <td className="px-6 py-4 text-gray-300">{transaction.to}</td>
-        <td className="px-6 py-4 text-gray-300">{transaction.amount}</td>
-        <td className="px-6 py-4 text-gray-300">{transaction.date}</td>
-      </tr>
-    ));
+    fetchData();
+    // Set up automatic refresh every minute
+    const refreshInterval = setInterval(fetchData, 60000);
+    return () => clearInterval(refreshInterval);
+  }, [dispatch]);
+
+  // Format order book activities for display
+  const formatOrderBookActivity = (order) => ({
+    type: 'order',
+    status: order.status,
+    amount: order.amount,
+    price: order.price,
+    token: order.token,
+    isBuyOrder: order.isBuyOrder,
+    timestamp: order.timestamp,
+    transaction: order.transactionHash || order.orderId,
+  });
+
+  // Combine liquidity pool and order book activities
+  const allActivities = [
+    ...(liquidityTransactions?.items || []),
+    ...(orders?.map(formatOrderBookActivity) || []),
+  ].sort((a, b) => b.timestamp - a.timestamp); // Sort by timestamp (most recent first)
+
+  const ActivityCard = ({ activity }) => {
+    const getActivityIcon = (type) => {
+      switch (type) {
+        case 'swap':
+          return '🔄';
+        case 'addLiquidity':
+          return '💧';
+        case 'removeLiquidity':
+          return '🔥';
+        case 'claimRewards':
+          return '🎁';
+        case 'order':
+          return '📊';
+        default:
+          return '📝';
+      }
+    };
+
+    const formatAmount = (type, activity) => {
+      switch (type) {
+        case 'swap':
+          return `${ethers.utils.formatEther(activity.amountIn || activity.amount)} ${token1} → 
+                 ${activity.amountOut ? ethers.utils.formatEther(activity.amountOut) : '?'} ${token2}`;
+        case 'addLiquidity':
+        case 'removeLiquidity':
+          return `${ethers.utils.formatEther(activity.amount1)} ${token1} + 
+                 ${ethers.utils.formatEther(activity.amount2)} ${token2}`;
+        case 'claimRewards':
+          return `${ethers.utils.formatEther(activity.amount)} Rewards`;
+        case 'order':
+          return `${ethers.utils.formatEther(activity.amount)} ${token1} @ 
+                 ${ethers.utils.formatEther(activity.price)} ${token2}`;
+        default:
+          return `${ethers.utils.formatEther(activity.amount || '0')}`;
+      }
+    };
+
+    const handleReveal = async (txHash) => {
+      if (activity.status === 'pending' && activity.isPrivate) {
+        await dispatch(revealTransaction(txHash));
+      }
+    };
+
+    return (
+      <div className="relative bg-card rounded-xl p-6 transition-all duration-300 hover:shadow-lg input-glow">
+        <div className="flex items-start gap-4">
+          <div className="text-2xl">{getActivityIcon(activity.type)}</div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-white">
+              {activity.type === 'swap' ? 'Token Swap' :
+               activity.type === 'addLiquidity' ? 'Added Liquidity' :
+               activity.type === 'removeLiquidity' ? 'Removed Liquidity' :
+               activity.type === 'claimRewards' ? 'Claimed Rewards' :
+               activity.type === 'order' ? (activity.isBuyOrder ? 'Buy Order' : 'Sell Order') :
+               'Activity'}
+            </h3>
+            <p className="text-gray-400 text-sm mt-1">
+              {new Date(parseInt(activity.timestamp) * 1000).toLocaleString()}
+            </p>
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">Amount:</span>
+                <span className="text-white font-medium">
+                  {formatAmount(activity.type, activity)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">Transaction:</span>
+                <a
+                  href={`https://etherscan.io/tx/${activity.transaction}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white hover:text-cyan-500"
+                >
+                  {activity.transaction.slice(0, 6)}...{activity.transaction.slice(-4)}
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {activity.isPrivate && activity.status === 'pending' ? (
+          <button
+            onClick={() => handleReveal(activity.txHash)}
+            className="btn-glow nav-button px-3 py-1 rounded-lg text-sm absolute top-4 right-4"
+          >
+            Reveal
+          </button>
+        ) : (
+          <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-medium
+            ${activity.status === 'confirmed' ? 'bg-card text-white border border-green-500' :
+              activity.status === 'pending' ? 'bg-card text-white border border-yellow-500' :
+              activity.status === 'failed' ? 'bg-card text-white border border-red-500' :
+              'bg-card text-white border border-gray-500'}`}>
+            {activity.status || 'Pending'}
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const totalPages = Math.ceil(transactions.length / transactionsPerPage);
+  const StatCard = ({ title, value, icon, change }) => (
+    <div className="bg-card rounded-xl p-6 input-glow transition-all duration-300">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-white">{title}</h3>
+        <span className="text-2xl">{icon}</span>
+      </div>
+      <div className="text-2xl font-bold text-white mb-2">{value}</div>
+      {change && (
+        <div className={`text-sm ${change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+          {change >= 0 ? '↑' : '↓'} {Math.abs(change)}%
+        </div>
+      )}
+    </div>
+  );
 
-  const updatePagination = () => {
-    const pages = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pages.push(
-        <button
-          key={i}
-          className={`px-4 py-2 mx-1 rounded-full transition ${i === currentPage ? 'bg-white text-sciFiBg' : 'bg-sciFiAccent text-sciFiBg hover:bg-white'}`}
-          onClick={() => setCurrentPage(i)}
-        >
-          {i}
-        </button>
-      );
+  const getFilteredActivities = () => {
+    let filtered = [...allActivities].slice(0, MAX_HISTORY);
+    if (activeFilter !== 'all') {
+      filtered = filtered.filter(tx => tx.type === activeFilter);
     }
-    return pages;
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filtered.slice(startIndex, endIndex);
   };
+
+  const totalPages = Math.ceil(
+    Math.min(allActivities.length, MAX_HISTORY) / ITEMS_PER_PAGE
+  );
 
   return (
-    <div className="bg-sciFiBg text-sciFiText font-sans">
-      
+    <div className="min-h-screen bg-sciFiBg">
       {/* Hero Section */}
-      <section id="history" className="min-h-screen flex items-center justify-center text-center p-4 bg-gradient-to-b from-sciFiBg to-gray-900">
-        <div className="max-w-3xl">
-          <h1 className="text-4xl md:text-6xl font-extrabold text-sciFiAccent mb-4">AngelSwap Transaction History</h1>
-          <p className="text-lg text-sciFiText mb-8">
-            Scroll to view the detailed history of your token swaps and transactions on AngelSwap.
+      <section className="pt-20 pb-10 bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a]">
+        <div className="max-w-7xl mx-auto px-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            Activity History
+          </h1>
+          <p className="text-gray-400 text-lg">
+            Your latest {MAX_HISTORY} activities on AngelSwap
           </p>
         </div>
       </section>
 
-      {/* History Table Section */}
-      <section className="py-16 bg-gray-800 text-gray-200">
-        <div className="max-w-7xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-8">Your Transaction History</h2>
-          <p id="transaction-count" className="text-lg mb-6">
-            {transactions.length === 0 ? 'No transactions available.' : `Total Transactions: ${transactions.length}`}
-          </p>
-
-          <div className="overflow-x-auto shadow-xl rounded-lg bg-gray-900">
-            <table className="min-w-full text-left">
-              <thead className="bg-gray-800">
-                <tr>
-                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Transaction ID</th>
-                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">From</th>
-                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">To</th>
-                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Amount</th>
-                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {renderTransactions()}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination Controls */}
-          <div className="mt-6 text-center">
-            {updatePagination()}
+      {/* Stats Overview */}
+      <section className="py-8 bg-[#1a1a1a]">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Pool Share"
+              value={`${poolDetails?.poolShare || '0'}%`}
+              icon="🌊"
+            />
+            <StatCard
+              title="Your Liquidity"
+              value={`${ethers.utils.formatEther(userLiquidity1 || '0')} T1`}
+              icon="💧"
+            />
+            <StatCard
+              title="Balance"
+              value={`${ethers.utils.formatEther(token1Balance || '0')} T1`}
+              icon="💰"
+            />
+            <StatCard
+              title="Pending Rewards"
+              value={ethers.utils.formatEther(pendingRewards || '0')}
+              icon="🎁"
+            />
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 bg-gray-900 text-center">
-        <p className="text-gray-400 text-sm">© 2024 AngelSwap. All rights reserved.</p>
-      </footer>
+      {/* Activity Feed */}
+      <section className="py-8 bg-[#0a0a0a]">
+        <div className="max-w-7xl mx-auto px-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 mb-8">
+            {['all', 'swap', 'addLiquidity', 'removeLiquidity', 'claimRewards', 'order'].map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                className={`btn-glow nav-button px-4 py-2 rounded-lg text-sm font-medium ${
+                  activeFilter === filter ? 'tab-active' : ''
+                }`}
+              >
+                {filter.charAt(0).toUpperCase() + filter.slice(1).replace(/([A-Z])/g, ' $1')}
+              </button>
+            ))}
+          </div>
+
+          {/* Activities */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <p className="text-red-500">Error loading activities: {error}</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {getFilteredActivities().map((activity, index) => (
+                  <ActivityCard key={activity.transaction || index} activity={activity} />
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex justify-center mt-8 gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="btn-glow nav-button px-4 py-2 rounded-lg disabled:opacity-50"
+                  >
+                    ←
+                  </button>
+                  {[...Array(totalPages)].map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`btn-glow nav-button px-4 py-2 rounded-lg ${
+                        currentPage === i + 1 ? 'tab-active' : ''
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="btn-glow nav-button px-4 py-2 rounded-lg disabled:opacity-50"
+                  >
+                    →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
     </div>
   );
 };

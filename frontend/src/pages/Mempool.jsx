@@ -1,34 +1,47 @@
 import React, { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchOrders } from "../store/slices/orderBookSlice"; // Import from orderBookSlice
 
 const Mempool = () => {
-  const [transactions, setTransactions] = useState([
-    { id: "0x1234abc5678xyz", sender: "0xA1B2C3D4E5F6G7H8", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$500", status: "Pending" },
-    { id: "0x2345def6789xyz", sender: "0x1234abcd5678efgh", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$300", status: "Pending" },
-    { id: "0x3456ghi890xyz", sender: "0xABCD1234EFGH5678", receiver: "0x1234ijkl5678mnop", amount: "$1200", status: "Pending" },
-    { id: "0x4567jkl0123xyz", sender: "0x4567ijklmnop8901", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1000", status: "Pending" },
-    { id: "0x5678mno2345xyz", sender: "0x5678mnopqrs9012", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$800", status: "Pending" },
-    { id: "0x6789opq3456xyz", sender: "0x6789pqrs4567tuv", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1500", status: "Pending" },
-    { id: "0x7890rst4567xyz", sender: "0x7890rst5678uvw", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$2000", status: "Pending" },
-    { id: "0x8901stu5678xyz", sender: "0x8901stuv6789xwy", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$900", status: "Pending" },
-    { id: "0x9012uvw6789xyz", sender: "0x9012uvwx7890yza", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1300", status: "Pending" },
-    { id: "0x2345def6789xyz", sender: "0x1234abcd5678efgh", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$300", status: "Pending" },
-    { id: "0x3456ghi890xyz", sender: "0xABCD1234EFGH5678", receiver: "0x1234ijkl5678mnop", amount: "$1200", status: "Pending" },
-    { id: "0x4567jkl0123xyz", sender: "0x4567ijklmnop8901", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1000", status: "Pending" },
-    { id: "0x5678mno2345xyz", sender: "0x5678mnopqrs9012", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$800", status: "Pending" },
-    { id: "0x6789opq3456xyz", sender: "0x6789pqrs4567tuv", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1500", status: "Pending" },
-    { id: "0x7890rst4567xyz", sender: "0x7890rst5678uvw", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$2000", status: "Pending" },
-    { id: "0x8901stu5678xyz", sender: "0x8901stuv6789xwy", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$900", status: "Pending" },
-    { id: "0x9012uvw6789xyz", sender: "0x9012uvwx7890yza", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1300", status: "Pending" },
-    { id: "0x2345def6789xyz", sender: "0x1234abcd5678efgh", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$300", status: "Pending" },
-    { id: "0x3456ghi890xyz", sender: "0xABCD1234EFGH5678", receiver: "0x1234ijkl5678mnop", amount: "$1200", status: "Pending" },
-    { id: "0x4567jkl0123xyz", sender: "0x4567ijklmnop8901", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1000", status: "Pending" },
-    { id: "0x5678mno2345xyz", sender: "0x5678mnopqrs9012", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$800", status: "Pending" },
-    { id: "0x6789opq3456xyz", sender: "0x6789pqrs4567tuv", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1500", status: "Pending" },
-    { id: "0x7890rst4567xyz", sender: "0x7890rst5678uvw", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$2000", status: "Pending" },
-    { id: "0x8901stu5678xyz", sender: "0x8901stuv6789xwy", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$900", status: "Pending" },
-    { id: "0x9012uvw6789xyz", sender: "0x9012uvwx7890yza", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1300", status: "Pending" },
-    { id: "0x0123xyz7890xyz", sender: "0x0123xyz8901bcd", receiver: "0x9X8Y7Z6W5V4U3T2", amount: "$1100", status: "Pending" }
-  ]);
+  const dispatch = useDispatch();
+
+  // Fetch order book activities
+  const { orders, loading, error } = useSelector((state) => state.orderBook);
+
+  // Local state for mempool transactions
+  const [transactions, setTransactions] = useState([]);
+
+  // Combine mempool transactions and order book activities
+  useEffect(() => {
+    if (window.ethereum) {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      signer.getAddress().then((address) => {
+        dispatch(fetchOrders(address)); // Fetch order book activities
+      });
+    }
+  }, [dispatch]);
+
+  // Format order book activities for display
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      const formattedOrders = orders.map((order) => ({
+        id: order.orderId,
+        sender: order.user,
+        receiver: "Order Book",
+        amount: `${ethers.utils.formatEther(order.amount)} ${order.token}`,
+        price: `${ethers.utils.formatEther(order.price)}`,
+        type: order.isBuyOrder ? "Buy Order" : "Sell Order",
+        status: order.status,
+      }));
+
+      // Combine with existing mempool transactions
+      setTransactions((prevTransactions) => [
+        ...prevTransactions,
+        ...formattedOrders,
+      ]);
+    }
+  }, [orders]);
 
   const transactionsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -45,6 +58,8 @@ const Mempool = () => {
         <td className="px-6 py-4 text-gray-300">{transaction.sender}</td>
         <td className="px-6 py-4 text-gray-300">{transaction.receiver}</td>
         <td className="px-6 py-4 text-gray-300">{transaction.amount}</td>
+        <td className="px-6 py-4 text-gray-300">{transaction.price}</td>
+        <td className="px-6 py-4 text-gray-300">{transaction.type}</td>
         <td className="px-6 py-4 text-gray-300">{transaction.status}</td>
       </tr>
     ));
@@ -58,7 +73,9 @@ const Mempool = () => {
       return (
         <button
           key={pageNum}
-          className={`px-4 py-2 mx-1 ${pageNum === currentPage ? "bg-white text-sciFiBg" : "bg-sciFiAccent text-sciFiBg"} rounded-full hover:bg-white transition`}
+          className={`px-4 py-2 mx-1 ${
+            pageNum === currentPage ? "bg-white text-sciFiBg" : "bg-sciFiAccent text-sciFiBg"
+          } rounded-full hover:bg-white transition`}
           onClick={() => setCurrentPage(pageNum)}
         >
           {pageNum}
@@ -82,8 +99,6 @@ const Mempool = () => {
 
   return (
     <div className="bg-sciFiBg text-sciFiText font-sans">
-      
-
       {/* Hero Section */}
       <section id="home" className="min-h-screen flex items-center justify-center text-center p-4 bg-gradient-to-b from-sciFiBg to-gray-900">
         <div className="max-w-3xl">
@@ -113,6 +128,8 @@ const Mempool = () => {
                   <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Sender</th>
                   <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Receiver</th>
                   <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Amount</th>
+                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Price</th>
+                  <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Type</th>
                   <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Status</th>
                 </tr>
               </thead>
