@@ -178,6 +178,9 @@ The following are the deployed contract addresses on the PulseChain network:
 
 ---
 
+npm install --save-dev @nomicfoundation/hardhat-toolbox@latest
+npm install --save-dev hardhat@latest
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

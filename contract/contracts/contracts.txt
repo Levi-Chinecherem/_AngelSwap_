@@ -16,15 +16,15 @@ C:\Development\web3\_AngelSwap_\contract (main -> origin) (angelswap-contract@1.
 Nothing to compile
 Faucet deployed at address: 0x519863aA2Ed5245Ac77C037E2A793eC5c4EdEdd0
 
-C:\Development\web3\_AngelSwap_\contract (main -> origin) (angelswap-contract@1.0.0)
-λ npx hardhat run scripts/deployLiquidityPool.js --network pulsechain
+➜  contract git:(main) ✗ npx hardhat run scripts/deployLiquidityPool.js --network pulsechain --show-stack-traces
+Downloading compiler 0.8.20
+Compiled 19 Solidity files successfully (evm target: paris).
 Deploying LiquidityPool implementation...
-LiquidityPool implementation deployed to: 0xd83d96b2d78335B347b269FDD6e13dEA26626Ee1
+LiquidityPool implementation deployed to: 0xf728A39940CeaD11FE4600E4B043242D69907dc6
 
-C:\Development\web3\_AngelSwap_\contract (main -> origin) (angelswap-contract@1.0.0)
-λ npx hardhat run scripts/deployLiquidityPoolFactory.js --network pulsechain
-LiquidityPoolFactory deployed to: 0xA01BFc416F7D7Cb0e0F327908D5af95cF105a680
+➜  contract git:(main) ✗ npx hardhat run scripts/deployLiquidityPoolFactory.js --network pulsechain
+Compiled 1 Solidity file successfully (evm target: paris).
+LiquidityPoolFactory deployed to: 0xd2809d97e8f295808f740A288c3965A5E94e238B
 
-C:\Development\web3\_AngelSwap_\contract (main -> origin) (angelswap-contract@1.0.0)
-λ npx hardhat run scripts/deployOrderBook.js --network pulsechain
-OrderBook deployed to: 0x88C6f0c6ab50Fd9C77709EF80d6A5e8874Dc1aEd
+➜  contract git:(main) ✗ npx hardhat run scripts/deployOrderBook.js --network pulsechain
+OrderBook deployed to: 0x40A03E18099AD1df0eC7fCBaDacdbB22231e00aa

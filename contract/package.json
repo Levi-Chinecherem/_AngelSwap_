@@ -13,7 +13,7 @@
     "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@nomiclabs/hardhat-etherscan": "^3.1.8",
     "ethers": "^5.7.2",
-    "hardhat": "^2.22.16"
+    "hardhat": "^2.22.18"
   },
   "dependencies": {
     "@nomicfoundation/hardhat-ignition": "^0.15.8",
