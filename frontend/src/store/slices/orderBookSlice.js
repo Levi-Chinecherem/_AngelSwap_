@@ -1,13 +1,13 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { ethers } from 'ethers';
-import OrderBookABI from '../../contracts/abis/OrderBook.json';
-import { ORDER_BOOK_ADDRESS } from '../../contracts/addresses';
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { ethers } from "ethers";
+import OrderBookABI from "../../contracts/OrderBook.sol/OrderBook.json"; // Full ABI
+import { ORDER_BOOK_ADDRESS } from "../../contracts/addresses";
 
-// Helper function to get the contract instance
-const getOrderBookContract = () => {
-  const provider = new ethers.providers.Web3Provider(window.ethereum);
-  const signer = provider.getSigner();
-  return new ethers.Contract(ORDER_BOOK_ADDRESS, OrderBookABI, signer);
+const getOrderBookContract = async () => {
+  if (!window.ethereum) throw new Error("No Ethereum provider found");
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+  return new ethers.Contract(ORDER_BOOK_ADDRESS, OrderBookABI.abi, signer);
 };
 
 // Place Order
@@ -113,51 +113,31 @@ export const getUserTransactionHashes = createAsyncThunk(
 );
 
 // Fetch Orders Events
+// Fix fetchOrders to handle BigInt
 export const fetchOrders = createAsyncThunk(
-  'orderBook/fetchOrders',
+  "orderBook/fetchOrders",
   async (userAddress, { rejectWithValue }) => {
     try {
-      const contract = getOrderBookContract();
-      
-      // Create filters for events
-      const orderPlacedFilter = contract.filters.OrderPlaced(null, userAddress);
-      const orderExecutedFilter = contract.filters.OrderExecuted();
-      const orderCancelledFilter = contract.filters.OrderCancelled(null, userAddress);
+      const contract = await getOrderBookContract();
+      const orderCount = await contract.orderCount();
+      const orders = [];
 
-      // Get recent blocks
-      const fromBlock = await contract.provider.getBlockNumber() - 1000;
-      const toBlock = 'latest';
-
-      // Get all events
-      const [placed, executed, cancelled] = await Promise.all([
-        contract.queryFilter(orderPlacedFilter, fromBlock, toBlock),
-        contract.queryFilter(orderExecutedFilter, fromBlock, toBlock),
-        contract.queryFilter(orderCancelledFilter, fromBlock, toBlock)
-      ]);
-
-      // Process events
-      const orders = placed.map(event => ({
-        orderId: event.args.orderId.toString(),
-        user: event.args.user,
-        token: event.args.token,
-        amount: event.args.amount.toString(),
-        price: event.args.price.toString(),
-        isBuyOrder: event.args.isBuyOrder,
-        isPrivate: event.args.isPrivate,
-        status: 'active',
-        timestamp: event.blockNumber
-      }));
-
-      // Update status for executed and cancelled orders
-      executed.forEach(event => {
-        const order = orders.find(o => o.orderId === event.args.orderId.toString());
-        if (order) order.status = 'executed';
-      });
-
-      cancelled.forEach(event => {
-        const order = orders.find(o => o.orderId === event.args.orderId.toString());
-        if (order) order.status = 'cancelled';
-      });
+      for (let i = 1; i <= orderCount; i++) {
+        const order = await contract.orders(i);
+        if (order.amount > 0) { // Only active orders
+          orders.push({
+            orderId: i.toString(),
+            user: order.user,
+            token: order.token,
+            amount: order.amount.toString(),
+            price: order.price.toString(),
+            isBuyOrder: order.isBuyOrder,
+            isPrivate: order.isPrivate,
+            status: "active",
+            timestamp: Number(order.timestamp),
+          });
+        }
+      }
 
       return orders;
     } catch (error) {

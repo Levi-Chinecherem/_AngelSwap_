@@ -1,13 +1,13 @@
 // securitySlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
-import LiquidityPoolABI from '../../contracts/abis/LiquidityPool.json';
-import OrderBookABI from '../../contracts/abis/OrderBook.json';
+import LiquidityPoolABI from '../../contracts/LiquidityPool.sol/LiquidityPool.json';
+import OrderBookABI from '../../contracts/OrderBook.sol/OrderBook.json';
 import { LIQUIDITY_POOL_ADDRESS, ORDER_BOOK_ADDRESS } from '../../contracts/addresses';
 
 // Helper function to get contract instances
 const getContracts = async () => {
-  const provider = new ethers.providers.Web3Provider(window.ethereum);
+  const provider = new ethers.BrowserProvider(window.ethereum);
   const signer = provider.getSigner();
   const liquidityPool = new ethers.Contract(LIQUIDITY_POOL_ADDRESS, LiquidityPoolABI, signer);
   const orderBook = new ethers.Contract(ORDER_BOOK_ADDRESS, OrderBookABI, signer);

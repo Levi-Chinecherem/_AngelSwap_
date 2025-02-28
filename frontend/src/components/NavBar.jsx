@@ -1,87 +1,147 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { ethers } from "ethers"; // Import ethers fully
+import {
+  setWalletAddress,
+  setIsConnecting,
+  setWalletError,
+  resetWallet,
+} from "../store/slices/walletSlice";
 import { toggleGlobalSecurity, revealGlobalTransaction } from "../store/slices/securitySlice";
-import { ethers } from "ethers";
-import { setWalletAddress, setProvider, setSigner } from "../store/slices/walletSlice";
-
-// Icons
+import { createSelector } from "@reduxjs/toolkit";
 import { FaWallet, FaLock, FaUnlock } from "react-icons/fa";
+
+const selectTransactions = createSelector(
+  [(state) => state.liquidityPool.transactions, (state) => state.orderBook.transactions],
+  (liquidityPool, orderBook) => ({
+    liquidityPool,
+    orderBook,
+  })
+);
 
 const NavBar = () => {
   const dispatch = useDispatch();
   const [showMenu, setShowMenu] = useState(false);
 
-  // Get security state from the global security slice
   const { securityEnabled, loading } = useSelector((state) => state.security);
-  const { transactions } = useSelector((state) => ({
-    liquidityPool: state.liquidityPool.transactions,
-    orderBook: state.orderBook.transactions,
-  }));
+  const transactions = useSelector(selectTransactions);
+  const { address: walletAddress, isConnecting } = useSelector((state) => state.wallet);
 
-  // Get wallet state from the wallet slice
-  const walletAddress = useSelector((state) => state.wallet.address);
+  // Connect or restore wallet connection
+  const connectWallet = useCallback(async () => {
+    if (!window.ethereum) {
+      console.error("MetaMask or compatible wallet not detected.");
+      dispatch(setWalletError("MetaMask not detected"));
+      return;
+    }
+
+    if (isConnecting) return;
+
+    try {
+      dispatch(setIsConnecting(true));
+      dispatch(setWalletError(null));
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+
+      // Request accounts if not already connected
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (accounts.length === 0) {
+        throw new Error("No accounts found");
+      }
+
+      dispatch(setWalletAddress(address));
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      dispatch(setWalletError(error.message));
+      dispatch(resetWallet());
+    } finally {
+      dispatch(setIsConnecting(false));
+    }
+  }, [dispatch, isConnecting]);
+
+  // Check wallet connection on mount and navigation
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (!window.ethereum) return;
+
+      try {
+        const accounts = await window.ethereum.request({ method: "eth_accounts" });
+        if (accounts.length > 0) {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const address = await signer.getAddress();
+          dispatch(setWalletAddress(address));
+        } else if (walletAddress) {
+          // If no accounts but walletAddress exists, reset (user disconnected manually)
+          dispatch(resetWallet());
+        }
+      } catch (error) {
+        console.error("Error checking wallet connection:", error);
+        dispatch(setWalletError(error.message));
+      }
+    };
+
+    checkWalletConnection();
+  }, [dispatch, walletAddress]); // Include walletAddress to re-check on navigation
+
+  // Handle wallet events
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    const handleAccountsChanged = async (accounts) => {
+      if (accounts.length === 0) {
+        dispatch(resetWallet());
+      } else {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        dispatch(setWalletAddress(address));
+      }
+    };
+
+    const handleChainChanged = () => {
+      window.location.reload();
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    window.ethereum.on("chainChanged", handleChainChanged);
+
+    return () => {
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      window.ethereum.removeListener("chainChanged", handleChainChanged);
+    };
+  }, [dispatch]);
 
   const handleToggleSecurity = async () => {
     const newSecurityState = !securityEnabled;
     await dispatch(toggleGlobalSecurity(newSecurityState));
 
-    // If security is being turned off, reveal all pending transactions
     if (!newSecurityState) {
-      // Reveal Liquidity Pool transactions
       if (transactions.liquidityPool.items) {
         for (const tx of transactions.liquidityPool.items) {
           if (tx.status === "pending") {
-            await dispatch(revealGlobalTransaction({
-              txHash: tx.txHash,
-              contractType: "liquidityPool",
-            }));
+            await dispatch(
+              revealGlobalTransaction({
+                txHash: tx.txHash,
+                contractType: "liquidityPool",
+              })
+            );
           }
         }
       }
 
-      // Reveal OrderBook transactions
       if (transactions.orderBook.length > 0) {
         for (const txHash of transactions.orderBook) {
-          await dispatch(revealGlobalTransaction({
-            txHash,
-            contractType: "orderBook",
-          }));
+          await dispatch(
+            revealGlobalTransaction({
+              txHash,
+              contractType: "orderBook",
+            })
+          );
         }
       }
-    }
-  };
-
-  // Connect wallet
-  const connectWallet = async () => {
-    if (window.ethereum) {
-      try {
-        // Request account access
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-
-        // Set up ethers provider and signer
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        const address = await signer.getAddress();
-
-        // Dispatch wallet connection details to Redux store
-        dispatch(setWalletAddress(address));
-        dispatch(setProvider(provider));
-        dispatch(setSigner(signer));
-
-        // Listen for account changes
-        window.ethereum.on("accountsChanged", (accounts) => {
-          dispatch(setWalletAddress(accounts[0]));
-        });
-
-        // Listen for chain changes
-        window.ethereum.on("chainChanged", () => {
-          window.location.reload();
-        });
-      } catch (error) {
-        console.error("Error connecting wallet:", error);
-      }
-    } else {
-      console.error("MetaMask or compatible wallet not detected.");
     }
   };
 
@@ -92,24 +152,21 @@ const NavBar = () => {
   return (
     <header className="fixed top-0 w-full z-50 bg-sciFiBg shadow-lg">
       <nav className="max-w-7xl mx-auto flex justify-between items-center p-4">
-        {/* Logo */}
         <a href="/" className="text-2xl font-bold text-sciFiAccent">
           AngelSwap
         </a>
 
-        {/* Hamburger Menu for Mobile */}
         <button
           className="md:hidden flex items-center justify-center w-10 h-10 text-sciFiAccent z-50"
           onClick={toggleMenu}
         >
           {showMenu ? (
-            <span className="text-2xl font-bold">&#10005;</span>
+            <span className="text-2xl font-bold">✕</span>
           ) : (
-            <span className="text-2xl font-bold">&#9776;</span>
+            <span className="text-2xl font-bold">☰</span>
           )}
         </button>
 
-        {/* Navigation Links */}
         <ul
           className={`fixed top-0 left-0 w-full h-screen bg-sciFiBg flex flex-col justify-center items-center space-y-6 text-lg font-semibold transition-transform transform ${
             showMenu ? "translate-x-0" : "-translate-x-full"
@@ -171,22 +228,24 @@ const NavBar = () => {
           </li>
         </ul>
 
-        {/* Wallet Connection and Security Toggle */}
         <div className="flex items-center space-x-4">
-          {/* Wallet Connection Button */}
           <button
             onClick={connectWallet}
+            disabled={isConnecting}
             className="flex items-center space-x-2 text-sciFiAccent hover:text-sciFiAccentHover transition-colors"
           >
             <FaWallet className="text-xl" />
-            {walletAddress && (
+            {isConnecting ? (
+              <span className="text-sm text-white">Connecting...</span>
+            ) : walletAddress ? (
               <span className="text-sm text-white">
                 {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
               </span>
+            ) : (
+              <span className="text-sm text-white">Connect Wallet</span>
             )}
           </button>
 
-          {/* Security Toggle with Loading State */}
           <button
             onClick={handleToggleSecurity}
             disabled={loading}

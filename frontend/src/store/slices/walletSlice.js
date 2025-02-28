@@ -1,24 +1,33 @@
 import { createSlice } from "@reduxjs/toolkit";
 
+const initialState = {
+  address: null,
+  isConnecting: false,
+  error: null,
+};
+
 const walletSlice = createSlice({
   name: "wallet",
-  initialState: {
-    address: null,
-    provider: null,
-    signer: null,
-  },
+  initialState,
   reducers: {
     setWalletAddress: (state, action) => {
       state.address = action.payload;
     },
-    setProvider: (state, action) => {
-      state.provider = action.payload;
+    setIsConnecting: (state, action) => {
+      state.isConnecting = action.payload;
     },
-    setSigner: (state, action) => {
-      state.signer = action.payload;
+    setWalletError: (state, action) => {
+      state.error = action.payload;
+    },
+    resetWallet: (state) => {
+      state.address = null;
+      state.isConnecting = false;
+      state.error = null;
     },
   },
 });
 
-export const { setWalletAddress, setProvider, setSigner } = walletSlice.actions;
+export const { setWalletAddress, setIsConnecting, setWalletError, resetWallet } =
+  walletSlice.actions;
+
 export default walletSlice.reducer;
