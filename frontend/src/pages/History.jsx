@@ -46,7 +46,6 @@ const History = () => {
         return;
       }
       try {
-        // Wait for provider to be ready
         await new Promise(resolve => setTimeout(resolve, 1000));
         await Promise.all([
           dispatch(fetchUserTransactions(walletAddress)).unwrap(),
@@ -103,22 +102,39 @@ const History = () => {
       try {
         switch (type) {
           case "swap":
-            return `${ethers.formatEther(activity.amountIn || activity.amount)} ${getTokenSymbol(poolDetails?.token1)} → ${
-              activity.amountOut ? ethers.formatEther(activity.amountOut) : "?"
+            return `${parseFloat(ethers.formatEther(activity.amountIn || activity.amount)).toFixed(6)} ${getTokenSymbol(poolDetails?.token1)} → ${
+              activity.amountOut ? parseFloat(ethers.formatEther(activity.amountOut)).toFixed(6) : "?"
             } ${getTokenSymbol(poolDetails?.token2)}`;
           case "addLiquidity":
           case "removeLiquidity":
-            return `${ethers.formatEther(activity.amount1 || "0")} ${getTokenSymbol(poolDetails?.token1)} + ${ethers.formatEther(activity.amount2 || "0")} ${getTokenSymbol(poolDetails?.token2)}`;
+            return `${parseFloat(ethers.formatEther(activity.amount1 || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token1)} + ${parseFloat(ethers.formatEther(activity.amount2 || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token2)}`;
           case "claimRewards":
-            return `${ethers.formatEther(activity.amount)} Rewards`;
+            return `${parseFloat(ethers.formatEther(activity.amount)).toFixed(6)} Rewards`;
           case "order":
-            return `${ethers.formatEther(activity.amount)} ${getTokenSymbol(activity.token)} @ ${ethers.formatEther(activity.price)}`;
+            return `${parseFloat(ethers.formatEther(activity.amount)).toFixed(6)} ${getTokenSymbol(activity.token)} @ ${parseFloat(ethers.formatEther(activity.price)).toFixed(6)}`;
           default:
-            return `${ethers.formatEther(activity.amount || "0")}`;
+            return `${parseFloat(ethers.formatEther(activity.amount || "0")).toFixed(6)}`;
         }
       } catch (err) {
         return "Error formatting amount";
       }
+    };
+
+    const formatTimestamp = (timestamp) => {
+      const ts = Number(timestamp);
+      console.log("Raw timestamp:", ts); // Debug raw value
+
+      // If timestamp is too small (e.g., < 1 million seconds), assume it's invalid or in milliseconds
+      if (ts < 1000000) {
+        // If it looks like milliseconds (e.g., > 1 trillion for recent dates), use as is
+        if (ts > 1e12) {
+          return new Date(ts).toLocaleString();
+        }
+        // Otherwise, assume it's seconds and needs conversion, or fallback to now
+        return new Date().toLocaleString() + " (Invalid timestamp)";
+      }
+      // Normal case: assume seconds, convert to milliseconds
+      return new Date(ts * 1000).toLocaleString();
     };
 
     const handleReveal = async () => {
@@ -155,7 +171,7 @@ const History = () => {
                "Activity"}
             </h3>
             <p className="text-gray-400 text-sm mt-1">
-              {new Date(parseInt(activity.timestamp) * 1000).toLocaleString()}
+              {formatTimestamp(activity.timestamp)}
             </p>
             <div className="mt-3 space-y-2">
               <div className="flex items-center justify-between text-sm">
@@ -218,6 +234,20 @@ const History = () => {
 
   const totalPages = Math.ceil(allActivities.length / ITEMS_PER_PAGE);
 
+  const formatStatValue = (key, value) => {
+    switch (key) {
+      case "Pool Share":
+        return value || "0%";
+      case "Your Liquidity":
+      case "Balance":
+        return `${parseFloat(ethers.formatEther(tokenBalances[poolDetails?.token1] || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token1)}`;
+      case "Pending Rewards":
+        return `${parseFloat(ethers.formatEther(pendingRewards || "0")).toFixed(6)}`;
+      default:
+        return value;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-sciFiBg">
       <section className="pt-20 pb-10 bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a]">
@@ -230,26 +260,10 @@ const History = () => {
       <section className="py-8 bg-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard
-              title="Pool Share"
-              value={poolDetails?.poolShare || "0%"}
-              icon="🌊"
-            />
-            <StatCard
-              title="Your Liquidity"
-              value={`${ethers.formatEther(tokenBalances[poolDetails?.token1] || "0")} ${getTokenSymbol(poolDetails?.token1)}`}
-              icon="💧"
-            />
-            <StatCard
-              title="Balance"
-              value={`${ethers.formatEther(tokenBalances[poolDetails?.token1] || "0")} ${getTokenSymbol(poolDetails?.token1)}`}
-              icon="💰"
-            />
-            <StatCard
-              title="Pending Rewards"
-              value={ethers.formatEther(pendingRewards || "0")}
-              icon="🎁"
-            />
+            <StatCard title="Pool Share" value={formatStatValue("Pool Share", poolDetails?.poolShare)} icon="🌊" />
+            <StatCard title="Your Liquidity" value={formatStatValue("Your Liquidity")} icon="💧" />
+            <StatCard title="Balance" value={formatStatValue("Balance")} icon="💰" />
+            <StatCard title="Pending Rewards" value={formatStatValue("Pending Rewards")} icon="🎁" />
           </div>
         </div>
       </section>

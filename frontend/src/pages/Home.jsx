@@ -121,7 +121,7 @@ const Home = () => {
               {[
                 {
                   icon: "👛",
-                  title: "Connect Wallet",
+                  title: "Connect Your Wallet",
                   description: "Securely connect your crypto wallet to start trading.",
                 },
                 {

@@ -112,15 +112,17 @@ export const swapTokens = createAsyncThunk(
       const signer = await provider.getSigner();
       const tokenContract = new ethers.Contract(fromToken, ERC20_ABI, signer);
 
+      console.log("Approving token:", fromToken, "Amount:", amountIn.toString());
       const approvalTx = await tokenContract.approve(LIQUIDITY_POOL_ADDRESS, amountIn);
       await approvalTx.wait();
 
+      console.log("Swapping:", { fromToken, amountIn: amountIn.toString(), minAmountOut: minAmountOut.toString() });
       const tx = await contract.swap(fromToken, amountIn, minAmountOut);
       const receipt = await tx.wait();
       return { fromToken, amountIn, minAmountOut, transaction: tx.hash };
     } catch (error) {
       console.error("swapTokens error:", error);
-      return rejectWithValue(error.message || "Failed to swap tokens");
+      return rejectWithValue(error.reason || error.message || "Failed to swap tokens");
     }
   }
 );
@@ -423,6 +425,7 @@ export const fetchTokenBalances = createAsyncThunk(
       const { tokens } = state.liquidityPool;
 
       if (!tokens || tokens.length === 0) {
+        console.log("No tokens available to fetch balances for");
         return {
           token1Balance: "0",
           token2Balance: "0",
@@ -432,15 +435,18 @@ export const fetchTokenBalances = createAsyncThunk(
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
+      const network = await provider.getNetwork();
+      console.log("Fetching balances on network:", network.chainId, "for user:", userAddress);
 
       const balances = await Promise.all(
         tokens.map(async (token) => {
           try {
             const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
             const balance = await tokenContract.balanceOf(userAddress);
+            console.log(`Balance for ${token.address} (${token.symbol}):`, balance.toString());
             return { address: token.address, balance: balance.toString() };
           } catch (error) {
-            console.error(`Error fetching balance for token ${token.address}:`, error);
+            console.error(`Error fetching balance for ${token.address}:`, error);
             return { address: token.address, balance: "0" };
           }
         })
@@ -451,6 +457,7 @@ export const fetchTokenBalances = createAsyncThunk(
         return acc;
       }, {});
 
+      console.log("Balance map:", balanceMap);
       return {
         token1Balance: balanceMap[tokens[0]?.address] || "0",
         token2Balance: balanceMap[tokens[1]?.address] || "0",

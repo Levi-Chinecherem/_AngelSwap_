@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchTokenBalances,
@@ -35,17 +35,36 @@ export default function Liquidity() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [poolPairs, setPoolPairs] = useState({});
   const [isFetching, setIsFetching] = useState(true);
+  const [timers, setTimers] = useState({
+    nextInterestTime: null,
+    currentTime: Date.now(),
+  });
+  const fetchRef = useRef(false);
 
   const dispatch = useDispatch();
   const { address: walletAddress } = useSelector((state) => state.wallet);
   const { tokens, tokenBalances, poolDetails, loading, error } = useSelector(
     (state) => state.liquidityPool
   );
-  const { liquidityPools } = useSelector((state) => state.admin);
+  const { liquidityPools: rawLiquidityPools } = useSelector((state) => state.admin);
+
+  // Deduplicate and filter liquidity pools
+  const liquidityPools = Array.from(new Set([...rawLiquidityPools, LIQUIDITY_POOL_ADDRESS])).filter(
+    (pool) => ethers.isAddress(pool)
+  );
+
+  // Simulated pool data (replace with real contract data if available)
+  const poolData = useRef({
+    [LIQUIDITY_POOL_ADDRESS]: { initTime: Date.now() - 7 * 24 * 60 * 60 * 1000 }, // 7 days ago
+    [selectedPool]: { userAddTime: null }, // Updated when liquidity is added
+  });
 
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (fetchRef.current) return;
+      fetchRef.current = true;
       setIsFetching(true);
+
       const maxRetries = 3;
       let success = false;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -59,7 +78,7 @@ export default function Liquidity() {
               walletAddress && dispatch(fetchAllLiquidityPools()).unwrap(),
             ]),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Timeout fetching data")), 15000)
+              setTimeout(() => reject(new Error("Timeout fetching data")), 30000)
             ),
           ]);
           console.log("Initial pool details:", poolDetails);
@@ -70,12 +89,17 @@ export default function Liquidity() {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const pairs = {};
             for (const poolAddr of liquidityPools) {
-              const poolContract = new ethers.Contract(poolAddr, LiquidityPoolABI.abi, provider);
-              const [token1, token2] = await Promise.all([poolContract.token1(), poolContract.token2()]);
-              const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
-              const token2Contract = new ethers.Contract(token2, ERC20_ABI, provider);
-              const [symbol1, symbol2] = await Promise.all([token1Contract.symbol(), token2Contract.symbol()]);
-              pairs[poolAddr] = `${symbol1}/${symbol2}`;
+              try {
+                const poolContract = new ethers.Contract(poolAddr, LiquidityPoolABI.abi, provider);
+                const [token1, token2] = await Promise.all([poolContract.token1(), poolContract.token2()]);
+                const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
+                const token2Contract = new ethers.Contract(token2, ERC20_ABI, provider);
+                const [symbol1, symbol2] = await Promise.all([token1Contract.symbol(), token2Contract.symbol()]);
+                pairs[poolAddr] = `${symbol1}/${symbol2}`;
+              } catch (err) {
+                console.error(`Error fetching pair for pool ${poolAddr}:`, err);
+                pairs[poolAddr] = "UNKNOWN/UNKNOWN";
+              }
             }
             setPoolPairs(pairs);
           }
@@ -90,14 +114,46 @@ export default function Liquidity() {
               variant: "destructive",
             });
           } else {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            const backoff = Math.pow(2, attempt) * 1000;
+            console.log(`Waiting ${backoff / 1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, backoff));
           }
         }
       }
-      setIsFetching(!success);
+
+      if (success) {
+        console.log("Fetch succeeded, applying 3s delay...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        setIsFetching(false);
+        console.log("Fetching complete with delay");
+
+        // Set initial times
+        setTimers({
+          nextInterestTime: Date.now() + 24 * 60 * 60 * 1000, // Next interest in 24h
+          currentTime: Date.now(),
+        });
+      }
+      fetchRef.current = false;
     };
-    fetchInitialData();
-  }, [dispatch, walletAddress, liquidityPools]);
+
+    if (walletAddress) {
+      fetchInitialData();
+    } else {
+      setIsFetching(false);
+    }
+  }, [dispatch, walletAddress]);
+
+  // Real-time timer updates
+  useEffect(() => {
+    if (isFetching) return;
+    const interval = setInterval(() => {
+      setTimers((prev) => ({
+        ...prev,
+        currentTime: Date.now(),
+      }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isFetching]);
 
   useEffect(() => {
     if (tokens && tokens.length >= 2) {
@@ -122,6 +178,27 @@ export default function Liquidity() {
   const getTokenSymbol = (tokenAddress) => {
     const token = tokens.find((t) => t.address === tokenAddress);
     return token?.symbol || "UNKNOWN";
+  };
+
+  // Simulated interest and rewards
+  const calculateInterest = () => {
+    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24); // Days
+    const baseLiquidity = parseFloat(ethers.formatEther(poolDetails.userLiquidity1 || "0"));
+    return (baseLiquidity * 0.05 * timeElapsed).toFixed(4); // 5% daily interest
+  };
+
+  const calculateRewards = () => {
+    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24); // Days
+    return (10 * timeElapsed).toFixed(4); // 10 reward tokens per day
+  };
+
+  const formatCountdown = (futureTime) => {
+    if (!futureTime) return "N/A";
+    const diff = Math.max(0, futureTime - timers.currentTime) / 1000; // Seconds
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    const seconds = Math.floor(diff % 60);
+    return `${hours}h ${minutes}m ${seconds}s`;
   };
 
   const handleInitializePool = async () => {
@@ -230,6 +307,12 @@ export default function Liquidity() {
         title: "Success",
         description: "Liquidity added successfully",
       });
+
+      poolData.current[selectedPool].userAddTime = Date.now();
+      setTimers((prev) => ({
+        ...prev,
+        nextInterestTime: Date.now() + 24 * 60 * 60 * 1000, // Reset next interest
+      }));
 
       setFromAmount("");
       setToAmount("");
@@ -422,12 +505,10 @@ export default function Liquidity() {
                       onChange={(e) => setSelectedPool(e.target.value)}
                       disabled={isFetching}
                     >
-                      <option value={LIQUIDITY_POOL_ADDRESS}>
-                        {LIQUIDITY_POOL_ADDRESS.slice(0, 6)}...{LIQUIDITY_POOL_ADDRESS.slice(-4)} (Default)
-                      </option>
                       {liquidityPools.map((pool) => (
                         <option key={pool} value={pool}>
-                          {poolPairs[pool] || `${pool.slice(0, 6)}...${pool.slice(-4)}`}
+                          {poolPairs[pool] || "Loading..."} - {pool.slice(0, 6)}...{pool.slice(-4)}
+                          {pool === LIQUIDITY_POOL_ADDRESS ? " (Default)" : ""}
                         </option>
                       ))}
                     </select>
@@ -491,7 +572,7 @@ export default function Liquidity() {
                     <div className="flex items-center mb-3">
                       <label className="text-white font-semibold text-lg">To</label>
                       <span className="text-white ml-2">
-                        Balance: {getFormattedBalance(toToken)} {getTokenSymbol(toToken)}
+                        Balance:  {getFormattedBalance(toToken)} {getTokenSymbol(toToken)}
                       </span>
                     </div>
                     <div className="flex items-center mb-4">
@@ -564,14 +645,28 @@ export default function Liquidity() {
                   <div id="liquidityList">
                     <div className="bg-gray-900 p-4 rounded-lg mb-4">
                       <h3 className="text-sciFiAccent font-bold mb-2">
-                        Pair: {getTokenSymbol(fromToken)}/{getTokenSymbol(toToken)}
+                        Pool: {poolPairs[selectedPool] || "Loading..."} - {selectedPool.slice(0, 6)}...{selectedPool.slice(-4)}
                       </h3>
-                      <p className="text-white text-sm">
-                        Your Liquidity: {ethers.formatEther(poolDetails.userLiquidity1 || "0")}{" "}
-                        {getTokenSymbol(fromToken)} /{" "}
-                        {ethers.formatEther(poolDetails.userLiquidity2 || "0")}{" "}
-                        {getTokenSymbol(toToken)}
-                      </p>
+                      <div className="text-white text-sm mb-4">
+                        <p>
+                          Your Liquidity: {ethers.formatEther(poolDetails.userLiquidity1 || "0")}{" "}
+                          {getTokenSymbol(fromToken)} /{" "}
+                          {ethers.formatEther(poolDetails.userLiquidity2 || "0")}{" "}
+                          {getTokenSymbol(toToken)}
+                        </p>
+                        <p>
+                          Your Pool Share: <span className="text-sciFiAccent font-semibold">{poolDetails?.poolShare || "0%"}</span>
+                        </p>
+                        <p>
+                          Accrued Interest: <span className="text-sciFiAccent font-semibold">{calculateInterest()} {getTokenSymbol(fromToken)}</span>
+                        </p>
+                        <p>
+                          Rewards to Claim: <span className="text-sciFiAccent font-semibold">{calculateRewards()} RWD</span>
+                        </p>
+                        <p>
+                          Next Interest: <span className="text-sciFiAccent font-semibold">{formatCountdown(timers.nextInterestTime)}</span>
+                        </p>
+                      </div>
                       <div className="mt-4">
                         <p className="text-white text-sm mb-2">Amounts to Remove:</p>
                         <div className="flex flex-col gap-2 mb-4">

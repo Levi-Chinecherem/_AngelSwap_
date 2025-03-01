@@ -8,16 +8,13 @@ import {
   fetchPoolDetails,
 } from "../store/slices/liquidityPoolSlice";
 import { placeOrder, fetchOrders } from "../store/slices/orderBookSlice";
-import { revealGlobalTransaction } from "../store/slices/securitySlice";
+import { toast } from "../components/ui/use-toast";
 import OrderBook from "../components/OrderBook";
 
 const Swap = () => {
   const dispatch = useDispatch();
   const { address: walletAddress } = useSelector((state) => state.wallet);
-  const { tokens, tokenBalances, poolDetails, loading, error } = useSelector(
-    (state) => state.liquidityPool
-  );
-  const { securityEnabled } = useSelector((state) => state.security);
+  const { tokens, tokenBalances, poolDetails, loading, error } = useSelector((state) => state.liquidityPool);
   const { orders } = useSelector((state) => state.orderBook);
 
   const [fromToken, setFromToken] = useState("");
@@ -30,33 +27,94 @@ const Swap = () => {
   const [limitPrice, setLimitPrice] = useState("");
   const [slippage, setSlippage] = useState(0.5);
   const [isLimitOrder, setIsLimitOrder] = useState(false);
+  const [poolReserves, setPoolReserves] = useState({ token1: "0.000000", token2: "0.000000" });
 
+  // Fetch initial data
   useEffect(() => {
-    if (walletAddress) {
-      dispatch(fetchAllTokens());
-      dispatch(fetchTokenBalances(walletAddress));
-      dispatch(fetchPoolDetails(walletAddress));
-      dispatch(fetchOrders(walletAddress));
+    if (!walletAddress) {
+      toast({ title: "Wallet Not Connected", description: "Please connect your wallet.", variant: "destructive" });
+      return;
     }
+    const fetchData = async () => {
+      try {
+        const [tokenList, balances, poolData, orderData] = await Promise.all([
+          dispatch(fetchAllTokens()).unwrap(),
+          dispatch(fetchTokenBalances(walletAddress)).unwrap(),
+          dispatch(fetchPoolDetails(walletAddress)).unwrap(),
+          dispatch(fetchOrders(walletAddress)).unwrap(),
+        ]);
+        console.log("Fetched tokens:", tokenList);
+        console.log("Fetched balances:", balances);
+        console.log("Fetched pool details:", poolData);
+        console.log("Fetched orders:", orderData);
+      } catch (err) {
+        console.error("Fetch error:", err);
+        toast({ title: "Error", description: err.message || "Failed to load data", variant: "destructive" });
+      }
+    };
+    fetchData();
   }, [dispatch, walletAddress]);
 
+  // Set initial tokens
   useEffect(() => {
     if (tokens.length > 0) {
-      setFromToken(tokens[0].address);
-      setToToken(tokens[1]?.address || tokens[0].address);
-      setLimitFromToken(tokens[0].address);
-      setLimitToToken(tokens[1]?.address || tokens[0].address);
+      setFromToken(tokens[0]?.address || "");
+      setToToken(tokens[1]?.address || tokens[0]?.address);
+      setLimitFromToken(tokens[0]?.address || "");
+      setLimitToToken(tokens[1]?.address || tokens[0]?.address);
+      console.log("Initial tokens set:", { fromToken: tokens[0]?.address, toToken: tokens[1]?.address });
+    } else {
+      console.log("No tokens available to set");
     }
   }, [tokens]);
 
-  const getBalance = (tokenAddress) =>
-    tokenBalances[tokenAddress] ? ethers.formatEther(tokenBalances[tokenAddress]) : "0";
+  // Update pool reserves
+  useEffect(() => {
+    if (poolDetails && poolDetails.totalLiquidity1 && poolDetails.totalLiquidity2) {
+      setPoolReserves({
+        token1: parseFloat(ethers.formatEther(poolDetails.totalLiquidity1 || "0")).toFixed(6),
+        token2: parseFloat(ethers.formatEther(poolDetails.totalLiquidity2 || "0")).toFixed(6),
+      });
+    }
+  }, [poolDetails]);
 
-  const getTokenSymbol = (tokenAddress) =>
-    tokens.find((t) => t.address === tokenAddress)?.symbol || "UNKNOWN";
+  const getBalance = (tokenAddress) => {
+    const balance = tokenBalances[tokenAddress];
+    const formattedBalance = balance ? parseFloat(ethers.formatEther(balance)).toFixed(6) : "0.000000";
+    console.log(`Getting balance for ${tokenAddress}:`, { raw: balance?.toString(), formatted: formattedBalance });
+    return formattedBalance;
+  };
 
-  const handleMaxAmount = (balance) => setFromAmount(balance);
+  const getTokenSymbol = (tokenAddress) => tokens.find((t) => t.address === tokenAddress)?.symbol || "UNKNOWN";
+  const getPoolReserve = (tokenAddress) => (tokenAddress === poolDetails?.token1 ? poolReserves.token1 : poolReserves.token2) || "0.000000";
 
+  // Calculate output amount
+  const calculateToAmount = () => {
+    if (!fromAmount || !fromToken || !toToken || !poolReserves.token1 || !poolReserves.token2) return;
+    const amountIn = ethers.parseEther(fromAmount);
+    const reserveIn = ethers.parseEther(fromToken === poolDetails.token1 ? poolReserves.token1 : poolReserves.token2);
+    const reserveOut = ethers.parseEther(fromToken === poolDetails.token1 ? poolReserves.token2 : poolReserves.token1);
+    const amountOutWithFee = (amountIn * reserveOut * BigInt(998)) / (reserveIn * BigInt(1000) + amountIn * BigInt(998));
+    setToAmount(parseFloat(ethers.formatEther(amountOutWithFee)).toFixed(6));
+  };
+
+  useEffect(() => calculateToAmount(), [fromAmount, fromToken, toToken, poolReserves]);
+
+  // Relaxed canSwap for testing
+  const canSwap = () => {
+    const result = !!(fromAmount && walletAddress && fromToken && toToken && parseFloat(fromAmount) > 0);
+    console.log("canSwap check:", {
+      fromAmount,
+      walletAddress: !!walletAddress,
+      fromToken: !!fromToken,
+      toToken: !!toToken,
+      amountValid: parseFloat(fromAmount) > 0,
+      result,
+    });
+    return result;
+  };
+
+  const handleMaxAmount = () => setFromAmount(getBalance(fromToken));
   const switchTokens = () => {
     setFromToken(toToken);
     setToToken(fromToken);
@@ -65,61 +123,85 @@ const Swap = () => {
   };
 
   const handleSwap = async () => {
-    if (!fromAmount || !walletAddress) return;
-    const amountIn = ethers.parseEther(fromAmount);
-    const minAmountOut = ethers.parseEther(toAmount) * BigInt(100 - slippage * 10) / BigInt(1000); // Slippage adjustment
+    const amountIn = parseFloat(fromAmount);
+    const reserve = parseFloat(getPoolReserve(fromToken));
+    if (!canSwap()) {
+      toast({ title: "Cannot Swap", description: "Invalid amount or wallet not connected", variant: "destructive" });
+      return;
+    }
+    if (amountIn > reserve) {
+      toast({
+        title: "Insufficient Liquidity",
+        description: `Swap amount (${amountIn} ${getTokenSymbol(fromToken)}) exceeds reserve (${reserve} ${getTokenSymbol(fromToken)}). Please reduce the amount.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const amountInWei = ethers.parseEther(fromAmount);
+    const minAmountOutWei = ethers.parseEther(toAmount || "0") * BigInt(1000 - Math.floor(slippage * 10)) / BigInt(1000);
+
     try {
-      await dispatch(
-        swapTokens({
-          fromToken,
-          amountIn,
-          minAmountOut,
-        })
-      ).unwrap();
-      dispatch(fetchTokenBalances(walletAddress));
-      dispatch(fetchPoolDetails(walletAddress));
+      const result = await dispatch(swapTokens({ fromToken, amountIn: amountInWei, minAmountOut: minAmountOutWei })).unwrap();
+      console.log("Swap result:", result);
+      await Promise.all([
+        dispatch(fetchTokenBalances(walletAddress)).unwrap(),
+        dispatch(fetchPoolDetails(walletAddress)).unwrap(),
+      ]);
       setFromAmount("");
       setToAmount("");
+      toast({ title: "Success", description: "Swap completed!" });
     } catch (err) {
       console.error("Swap error:", err);
+      toast({ title: "Swap Failed", description: err.reason || err.message || "Swap error", variant: "destructive" });
     }
+  };
+
+  const canPlaceOrder = () => {
+    const result = !!(limitFromAmount && limitPrice && walletAddress && limitFromToken && limitToToken && parseFloat(limitFromAmount) > 0 && parseFloat(limitPrice) > 0);
+    console.log("canPlaceOrder check:", {
+      limitFromAmount,
+      limitPrice,
+      walletAddress: !!walletAddress,
+      limitFromToken: !!limitFromToken,
+      limitToToken: !!limitToToken,
+      amountValid: parseFloat(limitFromAmount) > 0,
+      priceValid: parseFloat(limitPrice) > 0,
+      result,
+    });
+    return result;
   };
 
   const handleLimitOrder = async () => {
-    if (!limitFromAmount || !limitPrice || !walletAddress) return;
-    const amount = ethers.parseEther(limitFromAmount);
-    const price = ethers.parseEther(limitPrice);
-    const isBuyOrder = limitFromToken === toToken;
+    if (!canPlaceOrder()) {
+      toast({ title: "Invalid Order", description: "Fill all fields with valid values", variant: "destructive" });
+      return;
+    }
+    const amount = parseFloat(limitFromAmount);
+    const balance = parseFloat(getBalance(limitFromToken));
+    if (amount > balance) {
+      toast({ title: "Insufficient Balance", description: `Only ${balance} ${getTokenSymbol(limitFromToken)} available`, variant: "destructive" });
+      return;
+    }
+
+    const amountWei = ethers.parseEther(limitFromAmount);
+    const priceWei = ethers.parseEther(limitPrice);
+    const isBuyOrder = limitFromToken !== limitToToken;
+    const token = isBuyOrder ? limitToToken : limitFromToken;
+
     try {
-      await dispatch(
-        placeOrder({
-          token: isBuyOrder ? limitToToken : limitFromToken,
-          amount,
-          price,
-          isBuyOrder,
-        })
-      ).unwrap();
-      dispatch(fetchOrders(walletAddress));
+      const result = await dispatch(placeOrder({ token, amount: amountWei, price: priceWei, isBuyOrder })).unwrap();
+      console.log("Limit order result:", result);
+      await dispatch(fetchOrders(walletAddress)).unwrap();
+      await dispatch(fetchTokenBalances(walletAddress)).unwrap();
       setLimitFromAmount("");
       setLimitPrice("");
+      toast({ title: "Success", description: "Limit order placed!" });
     } catch (err) {
       console.error("Limit order error:", err);
+      toast({ title: "Order Failed", description: err.reason || err.message || "Order error", variant: "destructive" });
     }
   };
-
-  const calculateToAmount = () => {
-    if (!fromAmount || !poolDetails.token1PerToken2) return;
-    const amountIn = ethers.parseEther(fromAmount); // BigInt
-    const rate = ethers.parseEther(
-      fromToken === tokens[0].address ? poolDetails.token1PerToken2 : poolDetails.token2PerToken1
-    ); // Convert rate to BigInt
-    const amountOut = (amountIn * rate) / ethers.parseEther("1"); // BigInt arithmetic
-    setToAmount(ethers.formatEther(amountOut));
-  };
-
-  useEffect(() => {
-    calculateToAmount();
-  }, [fromAmount, fromToken, toToken, poolDetails]);
 
   return (
     <div className="pt-20 pb-16 px-4 bg-sciFiBg text-sciFiText">
@@ -140,13 +222,8 @@ const Swap = () => {
               <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
                   <label className="text-white font-semibold text-lg">From</label>
-                  <span className="text-white ml-2">
-                    Balance: {getBalance(fromToken)} {getTokenSymbol(fromToken)}
-                  </span>
-                  <button
-                    className="ml-2 text-sciFiAccent"
-                    onClick={() => handleMaxAmount(getBalance(fromToken))}
-                  >
+                  <span className="text-white ml-2">Balance: {getBalance(fromToken)} {getTokenSymbol(fromToken)}</span>
+                  <button className="ml-2 text-sciFiAccent" onClick={handleMaxAmount} disabled={!walletAddress || loading}>
                     MAX
                   </button>
                 </div>
@@ -157,33 +234,30 @@ const Swap = () => {
                     value={fromAmount}
                     onChange={(e) => setFromAmount(e.target.value)}
                     placeholder="0.0"
+                    disabled={loading || !walletAddress}
                   />
                   <select
                     className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-24 ml-2"
                     value={fromToken}
                     onChange={(e) => setFromToken(e.target.value)}
+                    disabled={loading || !walletAddress}
                   >
                     {tokens.map((token) => (
-                      <option key={token.address} value={token.address}>
-                        {token.symbol}
-                      </option>
+                      <option key={token.address} value={token.address}>{token.symbol}</option>
                     ))}
                   </select>
                 </div>
+                <p className="text-white text-sm mt-1">Pool Reserve: {getPoolReserve(fromToken)} {getTokenSymbol(fromToken)}</p>
               </div>
 
               <div className="flex justify-center mb-4">
-                <button className="arrow-btn text-white" onClick={switchTokens}>
-                  ⇅
-                </button>
+                <button className="arrow-btn text-white" onClick={switchTokens} disabled={loading || !walletAddress}>⇅</button>
               </div>
 
               <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
                   <label className="text-white font-semibold text-lg">To</label>
-                  <span className="text-white ml-2">
-                    Balance: {getBalance(toToken)} {getTokenSymbol(toToken)}
-                  </span>
+                  <span className="text-white ml-2">Balance: {getBalance(toToken)} {getTokenSymbol(toToken)}</span>
                 </div>
                 <div className="flex items-center">
                   <input
@@ -197,14 +271,14 @@ const Swap = () => {
                     className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-24 ml-2"
                     value={toToken}
                     onChange={(e) => setToToken(e.target.value)}
+                    disabled={loading || !walletAddress}
                   >
                     {tokens.map((token) => (
-                      <option key={token.address} value={token.address}>
-                        {token.symbol}
-                      </option>
+                      <option key={token.address} value={token.address}>{token.symbol}</option>
                     ))}
                   </select>
                 </div>
+                <p className="text-white text-sm mt-1">Pool Reserve: {getPoolReserve(toToken)} {getTokenSymbol(toToken)}</p>
               </div>
 
               <div className="flex items-center justify-between mb-4">
@@ -217,16 +291,30 @@ const Swap = () => {
                   min="0.1"
                   max="5"
                   step="0.1"
+                  disabled={loading || !walletAddress}
                 />
                 <span className="text-white">%</span>
               </div>
 
               <button
-                className="btn-glow nav-button py-3 px-6 rounded-lg w-full"
+                className={`btn-glow nav-button py-3 px-6 rounded-lg w-full ${
+                  !canSwap() || loading ? "opacity-50 cursor-not-allowed" : "hover:bg-sciFiAccentHover"
+                }`}
                 onClick={handleSwap}
-                disabled={!fromAmount || loading}
+                disabled={!canSwap() || loading}
               >
                 {loading ? "Swapping..." : "Swap"}
+              </button>
+
+              {/* Debug Button */}
+              <button
+                onClick={async () => {
+                  const balances = await dispatch(fetchTokenBalances(walletAddress)).unwrap();
+                  console.log("Manual fetch balances:", balances);
+                }}
+                className="mt-2 text-sciFiAccent"
+              >
+                Refresh Balances
               </button>
             </>
           ) : (
@@ -234,9 +322,7 @@ const Swap = () => {
               <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
                   <label className="text-white font-semibold text-lg">From</label>
-                  <span className="text-white ml-2">
-                    Balance: {getBalance(limitFromToken)} {getTokenSymbol(limitFromToken)}
-                  </span>
+                  <span className="text-white ml-2">Balance: {getBalance(limitFromToken)} {getTokenSymbol(limitFromToken)}</span>
                 </div>
                 <div className="flex items-center">
                   <input
@@ -245,16 +331,16 @@ const Swap = () => {
                     value={limitFromAmount}
                     onChange={(e) => setLimitFromAmount(e.target.value)}
                     placeholder="0.0"
+                    disabled={loading || !walletAddress}
                   />
                   <select
                     className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-24 ml-2"
                     value={limitFromToken}
                     onChange={(e) => setLimitFromToken(e.target.value)}
+                    disabled={loading || !walletAddress}
                   >
                     {tokens.map((token) => (
-                      <option key={token.address} value={token.address}>
-                        {token.symbol}
-                      </option>
+                      <option key={token.address} value={token.address}>{token.symbol}</option>
                     ))}
                   </select>
                 </div>
@@ -263,26 +349,18 @@ const Swap = () => {
               <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
                   <label className="text-white font-semibold text-lg">To</label>
-                  <span className="text-white ml-2">
-                    Balance: {getBalance(limitToToken)} {getTokenSymbol(limitToToken)}
-                  </span>
+                  <span className="text-white ml-2">Balance: {getBalance(limitToToken)} {getTokenSymbol(limitToToken)}</span>
                 </div>
                 <div className="flex items-center">
-                  <input
-                    type="number"
-                    className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-full"
-                    readOnly
-                    placeholder="0.0"
-                  />
+                  <input type="number" className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-full" readOnly placeholder="0.0" />
                   <select
                     className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-24 ml-2"
                     value={limitToToken}
                     onChange={(e) => setLimitToToken(e.target.value)}
+                    disabled={loading || !walletAddress}
                   >
                     {tokens.map((token) => (
-                      <option key={token.address} value={token.address}>
-                        {token.symbol}
-                      </option>
+                      <option key={token.address} value={token.address}>{token.symbol}</option>
                     ))}
                   </select>
                 </div>
@@ -296,13 +374,16 @@ const Swap = () => {
                   value={limitPrice}
                   onChange={(e) => setLimitPrice(e.target.value)}
                   placeholder="0.0"
+                  disabled={loading || !walletAddress}
                 />
               </div>
 
               <button
-                className="btn-glow nav-button py-3 px-6 rounded-lg w-full"
+                className={`btn-glow nav-button py-3 px-6 rounded-lg w-full ${
+                  !canPlaceOrder() || loading ? "opacity-50 cursor-not-allowed" : "hover:bg-sciFiAccentHover"
+                }`}
                 onClick={handleLimitOrder}
-                disabled={!limitFromAmount || !limitPrice || loading}
+                disabled={!canPlaceOrder() || loading}
               >
                 {loading ? "Placing..." : "Place Limit Order"}
               </button>
@@ -311,13 +392,10 @@ const Swap = () => {
                 <h3 className="text-white font-semibold text-lg mb-3">Your Limit Orders</h3>
                 <div className="space-y-2">
                   {orders.map((order) => (
-                    <div
-                      key={order.orderId}
-                      className="flex items-center justify-between bg-gray-800 p-2 rounded"
-                    >
+                    <div key={order.orderId} className="flex items-center justify-between bg-gray-800 p-2 rounded">
                       <span className="text-white">
-                        {ethers.formatEther(order.amount)} {getTokenSymbol(order.token)} @{" "}
-                        {ethers.formatEther(order.price)}
+                        {parseFloat(ethers.formatEther(order.amount)).toFixed(6)} {getTokenSymbol(order.token)} @{" "}
+                        {parseFloat(ethers.formatEther(order.price)).toFixed(6)}
                       </span>
                       <span className="text-white">{order.status}</span>
                     </div>
