@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchOrders, executeOrder, cancelOrder } from "../store/slices/orderBookSlice";
+import { fetchOrders, cancelOrder } from "../store/slices/orderBookSlice"; // Removed executeOrder
 import { ethers } from "ethers";
 import { toast } from "../components/ui/use-toast";
 
@@ -9,7 +9,6 @@ const OrderBook = () => {
   const { orders, loading, error } = useSelector((state) => state.orderBook);
   const { address: walletAddress } = useSelector((state) => state.wallet);
   const { securityEnabled } = useSelector((state) => state.security);
-  const { poolDetails } = useSelector((state) => state.liquidityPool);
   const [buyOrders, setBuyOrders] = useState([]);
   const [sellOrders, setSellOrders] = useState([]);
   const [currentPageBuy, setCurrentPageBuy] = useState(1);
@@ -36,18 +35,6 @@ const OrderBook = () => {
     user: order.user,
   });
 
-  const handleExecute = async (orderId) => {
-    try {
-      const marketLiquidity1 = ethers.parseEther(poolDetails.totalLiquidity1 || "0");
-      const marketLiquidity2 = ethers.parseEther(poolDetails.totalLiquidity2 || "0");
-      await dispatch(executeOrder({ orderId, marketLiquidity1, marketLiquidity2 })).unwrap();
-      toast({ title: "Success", description: "Order executed!" });
-      dispatch(fetchOrders(walletAddress));
-    } catch (err) {
-      toast({ title: "Error", description: err.message || "Execution failed", variant: "destructive" });
-    }
-  };
-
   const handleCancel = async (orderId) => {
     try {
       await dispatch(cancelOrder(orderId)).unwrap();
@@ -63,17 +50,22 @@ const OrderBook = () => {
     const currentOrders = orders.slice(start, start + ordersPerPage);
     return currentOrders.map((order) => (
       <tr key={order.orderId} className="border-t border-gray-700">
-        <td className={`px-6 py-4 ${order.type === "buy" ? "text-green-500" : "text-red-500"}`}>
+        <td className={`px-2 sm:px-4 md:px-6 py-4 ${order.type === "buy" ? "text-green-500" : "text-red-500"}`}>
           {securityEnabled && order.isPrivate ? "****" : order.price}
         </td>
-        <td className="px-6 py-4 text-gray-300">{securityEnabled && order.isPrivate ? "****" : order.amount}</td>
-        <td className="px-6 py-4 text-gray-300">{securityEnabled && order.isPrivate ? "****" : order.total}</td>
+        <td className="px-2 sm:px-4 md:px-6 py-4 text-gray-300">{securityEnabled && order.isPrivate ? "****" : order.amount}</td>
+        <td className="px-2 sm:px-4 md:px-6 py-4 text-gray-300">{securityEnabled && order.isPrivate ? "****" : order.total}</td>
         {walletAddress && (
-          <td className="px-6 py-4">
+          <td className="px-2 sm:px-4 md:px-6 py-4 whitespace-nowrap">
             {order.user === walletAddress && (
-              <button onClick={() => handleCancel(order.orderId)} className="text-red-500 mr-2">Cancel</button>
+              <button
+                onClick={() => handleCancel(order.orderId)}
+                className="text-red-500"
+                disabled={loading}
+              >
+                Cancel
+              </button>
             )}
-            <button onClick={() => handleExecute(order.orderId)} className="text-green-500">Execute</button>
           </td>
         )}
       </tr>
@@ -105,32 +97,36 @@ const OrderBook = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
               <h2 className="text-xl font-semibold text-sciFiAccent mb-4">Buy Orders</h2>
-              <table className="min-w-full">
-                <thead>
-                  <tr className="bg-gray-700">
-                    <th className="px-6 py-2">Price</th>
-                    <th className="px-6 py-2">Amount</th>
-                    <th className="px-6 py-2">Total</th>
-                    {walletAddress && <th className="px-6 py-2">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>{renderOrders(buyOrders, currentPageBuy)}</tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full max-w-full">
+                  <thead>
+                    <tr className="bg-gray-700">
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Price</th>
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Amount</th>
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Total</th>
+                      {walletAddress && <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>{renderOrders(buyOrders, currentPageBuy)}</tbody>
+                </table>
+              </div>
               <div className="flex justify-center mt-4">{pagination(buyOrders, currentPageBuy, setCurrentPageBuy)}</div>
             </div>
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
               <h2 className="text-xl font-semibold text-sciFiAccent mb-4">Sell Orders</h2>
-              <table className="min-w-full">
-                <thead>
-                  <tr className="bg-gray-700">
-                    <th className="px-6 py-2">Price</th>
-                    <th className="px-6 py-2">Amount</th>
-                    <th className="px-6 py-2">Total</th>
-                    {walletAddress && <th className="px-6 py-2">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>{renderOrders(sellOrders, currentPageSell)}</tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full max-w-full">
+                  <thead>
+                    <tr className="bg-gray-700">
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Price</th>
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Amount</th>
+                      <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Total</th>
+                      {walletAddress && <th className="px-2 sm:px-4 md:px-6 py-2 text-left">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>{renderOrders(sellOrders, currentPageSell)}</tbody>
+                </table>
+              </div>
               <div className="flex justify-center mt-4">{pagination(sellOrders, currentPageSell, setCurrentPageSell)}</div>
             </div>
           </div>

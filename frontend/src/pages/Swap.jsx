@@ -27,6 +27,7 @@ const Swap = () => {
   const [limitPrice, setLimitPrice] = useState("");
   const [slippage, setSlippage] = useState(0.5);
   const [isLimitOrder, setIsLimitOrder] = useState(false);
+  const [isBuyOrder, setIsBuyOrder] = useState(true); // New state for buy/sell toggle
   const [poolReserves, setPoolReserves] = useState({ token1: "0.000000", token2: "0.000000" });
 
   // Fetch initial data
@@ -100,7 +101,6 @@ const Swap = () => {
 
   useEffect(() => calculateToAmount(), [fromAmount, fromToken, toToken, poolReserves]);
 
-  // Relaxed canSwap for testing
   const canSwap = () => {
     const result = !!(fromAmount && walletAddress && fromToken && toToken && parseFloat(fromAmount) > 0);
     console.log("canSwap check:", {
@@ -186,20 +186,19 @@ const Swap = () => {
 
     const amountWei = ethers.parseEther(limitFromAmount);
     const priceWei = ethers.parseEther(limitPrice);
-    const isBuyOrder = limitFromToken !== limitToToken;
-    const token = isBuyOrder ? limitToToken : limitFromToken;
+    const token = isBuyOrder ? limitToToken : limitFromToken; // Token to buy or sell
 
     try {
       const result = await dispatch(placeOrder({ token, amount: amountWei, price: priceWei, isBuyOrder })).unwrap();
-      console.log("Limit order result:", result);
+      console.log("Limit order placed:", result);
       await dispatch(fetchOrders(walletAddress)).unwrap();
       await dispatch(fetchTokenBalances(walletAddress)).unwrap();
       setLimitFromAmount("");
       setLimitPrice("");
-      toast({ title: "Success", description: "Limit order placed!" });
+      toast({ title: "Success", description: `Limit ${isBuyOrder ? "buy" : "sell"} order placed! It will appear in your orders below.` });
     } catch (err) {
       console.error("Limit order error:", err);
-      toast({ title: "Order Failed", description: err.reason || err.message || "Order error", variant: "destructive" });
+      toast({ title: "Order Failed", description: err.reason || err.message || "Failed to place order", variant: "destructive" });
     }
   };
 
@@ -306,7 +305,6 @@ const Swap = () => {
                 {loading ? "Swapping..." : "Swap"}
               </button>
 
-              {/* Debug Button */}
               <button
                 onClick={async () => {
                   const balances = await dispatch(fetchTokenBalances(walletAddress)).unwrap();
@@ -320,8 +318,32 @@ const Swap = () => {
           ) : (
             <>
               <div className="flex flex-col mb-4">
+                <label className="text-white font-semibold text-lg mb-3">Order Type</label>
+                <div className="flex space-x-4">
+                  <label className="text-white">
+                    <input
+                      type="radio"
+                      name="orderType"
+                      checked={isBuyOrder}
+                      onChange={() => setIsBuyOrder(true)}
+                      disabled={loading || !walletAddress}
+                    /> Buy
+                  </label>
+                  <label className="text-white">
+                    <input
+                      type="radio"
+                      name="orderType"
+                      checked={!isBuyOrder}
+                      onChange={() => setIsBuyOrder(false)}
+                      disabled={loading || !walletAddress}
+                    /> Sell
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
-                  <label className="text-white font-semibold text-lg">From</label>
+                  <label className="text-white font-semibold text-lg">{isBuyOrder ? "Pay" : "Sell"}</label>
                   <span className="text-white ml-2">Balance: {getBalance(limitFromToken)} {getTokenSymbol(limitFromToken)}</span>
                 </div>
                 <div className="flex items-center">
@@ -348,11 +370,16 @@ const Swap = () => {
 
               <div className="flex flex-col mb-4">
                 <div className="flex items-center mb-3">
-                  <label className="text-white font-semibold text-lg">To</label>
+                  <label className="text-white font-semibold text-lg">{isBuyOrder ? "Receive" : "Receive"}</label>
                   <span className="text-white ml-2">Balance: {getBalance(limitToToken)} {getTokenSymbol(limitToToken)}</span>
                 </div>
                 <div className="flex items-center">
-                  <input type="number" className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-full" readOnly placeholder="0.0" />
+                  <input
+                    type="number"
+                    className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-full"
+                    readOnly
+                    placeholder="0.0"
+                  />
                   <select
                     className="input-glow bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-3 w-24 ml-2"
                     value={limitToToken}
@@ -385,7 +412,7 @@ const Swap = () => {
                 onClick={handleLimitOrder}
                 disabled={!canPlaceOrder() || loading}
               >
-                {loading ? "Placing..." : "Place Limit Order"}
+                {loading ? "Placing..." : `Place Limit ${isBuyOrder ? "Buy" : "Sell"} Order`}
               </button>
 
               <div className="mt-6">
@@ -394,7 +421,7 @@ const Swap = () => {
                   {orders.map((order) => (
                     <div key={order.orderId} className="flex items-center justify-between bg-gray-800 p-2 rounded">
                       <span className="text-white">
-                        {parseFloat(ethers.formatEther(order.amount)).toFixed(6)} {getTokenSymbol(order.token)} @{" "}
+                        {order.isBuyOrder ? "Buy" : "Sell"} {parseFloat(ethers.formatEther(order.amount)).toFixed(6)} {getTokenSymbol(order.token)} @{" "}
                         {parseFloat(ethers.formatEther(order.price)).toFixed(6)}
                       </span>
                       <span className="text-white">{order.status}</span>

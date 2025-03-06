@@ -15,27 +15,41 @@ export const placeOrder = createAsyncThunk(
   'orderBook/placeOrder',
   async ({ token, amount, price, isBuyOrder }, { rejectWithValue }) => {
     try {
-      const contract = getOrderBookContract();
+      const contract = await getOrderBookContract(); // Await the contract instance
+      console.log("OrderBook contract initialized at:", ORDER_BOOK_ADDRESS);
+      console.log("Calling placeOrder with:", { token, amount: amount.toString(), price: price.toString(), isBuyOrder });
+
+      // Verify placeOrder exists
+      if (!contract.placeOrder) {
+        throw new Error("placeOrder function not found on contract");
+      }
+
       const tx = await contract.placeOrder(token, amount, price, isBuyOrder);
-      await tx.wait();
+      const receipt = await tx.wait();
+      console.log("Place order transaction:", tx.hash);
       return { token, amount, price, isBuyOrder, transaction: tx.hash };
     } catch (error) {
-      return rejectWithValue(error.message);
+      console.error("placeOrder error:", error);
+      return rejectWithValue(error.message || "Failed to place order");
     }
   }
 );
 
 // Execute Order
+// Execute Order
 export const executeOrder = createAsyncThunk(
   'orderBook/executeOrder',
   async ({ orderId, marketLiquidity1, marketLiquidity2 }, { rejectWithValue }) => {
     try {
-      const contract = getOrderBookContract();
+      const contract = await getOrderBookContract(); // Await the contract instance
+      console.log("Calling executeOrder with:", { orderId, marketLiquidity1: marketLiquidity1.toString(), marketLiquidity2: marketLiquidity2.toString() });
       const tx = await contract.executeOrder(orderId, marketLiquidity1, marketLiquidity2);
       await tx.wait();
+      console.log("Execute order transaction:", tx.hash);
       return { orderId, transaction: tx.hash };
     } catch (error) {
-      return rejectWithValue(error.message);
+      console.error("executeOrder error:", error);
+      return rejectWithValue(error.message || "Failed to execute order");
     }
   }
 );
@@ -45,12 +59,15 @@ export const cancelOrder = createAsyncThunk(
   'orderBook/cancelOrder',
   async (orderId, { rejectWithValue }) => {
     try {
-      const contract = getOrderBookContract();
+      const contract = await getOrderBookContract(); // Await the contract instance
+      console.log("Calling cancelOrder with:", { orderId });
       const tx = await contract.cancelOrder(orderId);
       await tx.wait();
+      console.log("Cancel order transaction:", tx.hash);
       return { orderId, transaction: tx.hash };
     } catch (error) {
-      return rejectWithValue(error.message);
+      console.error("cancelOrder error:", error);
+      return rejectWithValue(error.message || "Failed to cancel order");
     }
   }
 );

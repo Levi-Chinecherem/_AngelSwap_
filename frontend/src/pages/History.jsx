@@ -122,18 +122,10 @@ const History = () => {
 
     const formatTimestamp = (timestamp) => {
       const ts = Number(timestamp);
-      console.log("Raw timestamp:", ts); // Debug raw value
-
-      // If timestamp is too small (e.g., < 1 million seconds), assume it's invalid or in milliseconds
       if (ts < 1000000) {
-        // If it looks like milliseconds (e.g., > 1 trillion for recent dates), use as is
-        if (ts > 1e12) {
-          return new Date(ts).toLocaleString();
-        }
-        // Otherwise, assume it's seconds and needs conversion, or fallback to now
+        if (ts > 1e12) return new Date(ts).toLocaleString();
         return new Date().toLocaleString() + " (Invalid timestamp)";
       }
-      // Normal case: assume seconds, convert to milliseconds
       return new Date(ts * 1000).toLocaleString();
     };
 
@@ -170,9 +162,7 @@ const History = () => {
                activity.type === "order" ? (activity.isBuyOrder ? "Buy Order" : "Sell Order") :
                "Activity"}
             </h3>
-            <p className="text-gray-400 text-sm mt-1">
-              {formatTimestamp(activity.timestamp)}
-            </p>
+            <p className="text-gray-400 text-sm mt-1">{formatTimestamp(activity.timestamp)}</p>
             <div className="mt-3 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Amount:</span>
@@ -218,7 +208,9 @@ const History = () => {
         <h3 className="text-lg font-semibold text-white">{title}</h3>
         <span className="text-2xl">{icon}</span>
       </div>
-      <div className="text-2xl font-bold text-white">{value}</div>
+      <div className="text-2xl font-bold text-white">
+        {loading ? "Loading..." : value}
+      </div>
     </div>
   );
 
@@ -235,10 +227,12 @@ const History = () => {
   const totalPages = Math.ceil(allActivities.length / ITEMS_PER_PAGE);
 
   const formatStatValue = (key, value) => {
+    if (loading) return "Loading..."; // Show "Loading..." during load
     switch (key) {
       case "Pool Share":
         return value || "0%";
       case "Your Liquidity":
+        return `${parseFloat(ethers.formatEther(poolDetails?.userLiquidity1 || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token1)} / ${parseFloat(ethers.formatEther(poolDetails?.userLiquidity2 || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token2)}`;
       case "Balance":
         return `${parseFloat(ethers.formatEther(tokenBalances[poolDetails?.token1] || "0")).toFixed(6)} ${getTokenSymbol(poolDetails?.token1)}`;
       case "Pending Rewards":
