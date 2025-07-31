@@ -7,15 +7,15 @@ import {
   fetchTokenBalances,
   fetchPoolDetails,
 } from "../store/slices/liquidityPoolSlice";
-import { placeOrder, fetchOrders } from "../store/slices/orderBookSlice";
+import { placeOrder, fetchOrders, cancelOrder, executeOrder, clearError } from "../store/slices/orderBookSlice";
 import { toast } from "../components/ui/use-toast";
 import OrderBook from "../components/OrderBook";
 
 const Swap = () => {
   const dispatch = useDispatch();
   const { address: walletAddress } = useSelector((state) => state.wallet);
-  const { tokens, tokenBalances, poolDetails, loading, error } = useSelector((state) => state.liquidityPool);
-  const { orders } = useSelector((state) => state.orderBook);
+  const { tokens, tokenBalances, poolDetails, loading } = useSelector((state) => state.liquidityPool);
+  const { orders, error } = useSelector((state) => state.orderBook);
 
   const [fromToken, setFromToken] = useState("");
   const [toToken, setToToken] = useState("");
@@ -32,7 +32,7 @@ const Swap = () => {
   // Fetch initial data
   useEffect(() => {
     if (!walletAddress) {
-      toast({ title: "Wallet Not Connected", description: "Please connect your wallet.", variant: "destructive" });
+      toast({ title: "Wallet Not Connected", description: "Please connect your wallet.", variant: "destructive", duration: 3000 });
       return;
     }
     const fetchData = async () => {
@@ -43,13 +43,11 @@ const Swap = () => {
           dispatch(fetchPoolDetails(walletAddress)).unwrap(),
           dispatch(fetchOrders(walletAddress)).unwrap(),
         ]);
-        console.log("Fetched tokens:", tokenList);
-        console.log("Fetched balances:", balances);
-        console.log("Fetched pool details:", poolData);
         console.log("Fetched orders:", orderData);
+        console.log("Fetched pool details:", poolData);
       } catch (err) {
         console.error("Fetch error:", err);
-        toast({ title: "Error", description: err.message || "Failed to load data", variant: "destructive" });
+        toast({ title: "Error", description: err.message || "Failed to load data", variant: "destructive", duration: 3000 });
       }
     };
     fetchData();
@@ -62,9 +60,6 @@ const Swap = () => {
       setToToken(tokens[1]?.address || tokens[0]?.address);
       setLimitFromToken(tokens[0]?.address || "");
       setLimitToToken(tokens[1]?.address || tokens[0]?.address);
-      console.log("Initial tokens set:", { fromToken: tokens[0]?.address, toToken: tokens[1]?.address });
-    } else {
-      console.log("No tokens available to set");
     }
   }, [tokens]);
 
@@ -78,11 +73,17 @@ const Swap = () => {
     }
   }, [poolDetails]);
 
+  // Show error as toast and clear it
+  useEffect(() => {
+    if (error) {
+      toast({ title: "Error", description: error, variant: "destructive", duration: 3000 });
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
+
   const getBalance = (tokenAddress) => {
     const balance = tokenBalances[tokenAddress];
-    const formattedBalance = balance ? parseFloat(ethers.formatEther(balance)).toFixed(6) : "0.000000";
-    console.log(`Getting balance for ${tokenAddress}:`, { raw: balance?.toString(), formatted: formattedBalance });
-    return formattedBalance;
+    return balance ? parseFloat(ethers.formatEther(balance)).toFixed(6) : "0.000000";
   };
 
   const getTokenSymbol = (tokenAddress) => tokens.find((t) => t.address === tokenAddress)?.symbol || "UNKNOWN";
@@ -93,14 +94,13 @@ const Swap = () => {
     if (!fromAmount || !fromToken || !toToken || !poolReserves.token1 || !poolReserves.token2) return;
     const amountIn = ethers.parseEther(fromAmount);
     const reserveIn = ethers.parseEther(fromToken === poolDetails.token1 ? poolReserves.token1 : poolReserves.token2);
-    const reserveOut = ethers.parseEther(fromToken === poolDetails.token1 ? poolReserves.token2 : poolReserves.token1);
+    const reserveOut = ethers.parseEther(fromToken === poolDetails.token1 ? poolReserves.token2 : poolDetails.token1);
     const amountOutWithFee = (amountIn * reserveOut * BigInt(998)) / (reserveIn * BigInt(1000) + amountIn * BigInt(998));
     setToAmount(parseFloat(ethers.formatEther(amountOutWithFee)).toFixed(6));
   };
 
   useEffect(() => calculateToAmount(), [fromAmount, fromToken, toToken, poolReserves]);
 
-  // Relaxed canSwap for testing
   const canSwap = () => {
     const result = !!(fromAmount && walletAddress && fromToken && toToken && parseFloat(fromAmount) > 0);
     console.log("canSwap check:", {
@@ -126,7 +126,7 @@ const Swap = () => {
     const amountIn = parseFloat(fromAmount);
     const reserve = parseFloat(getPoolReserve(fromToken));
     if (!canSwap()) {
-      toast({ title: "Cannot Swap", description: "Invalid amount or wallet not connected", variant: "destructive" });
+      toast({ title: "Cannot Swap", description: "Invalid amount or wallet not connected", variant: "destructive", duration: 3000 });
       return;
     }
     if (amountIn > reserve) {
@@ -134,6 +134,7 @@ const Swap = () => {
         title: "Insufficient Liquidity",
         description: `Swap amount (${amountIn} ${getTokenSymbol(fromToken)}) exceeds reserve (${reserve} ${getTokenSymbol(fromToken)}). Please reduce the amount.`,
         variant: "destructive",
+        duration: 3000,
       });
       return;
     }
@@ -143,17 +144,15 @@ const Swap = () => {
 
     try {
       const result = await dispatch(swapTokens({ fromToken, amountIn: amountInWei, minAmountOut: minAmountOutWei })).unwrap();
-      console.log("Swap result:", result);
       await Promise.all([
         dispatch(fetchTokenBalances(walletAddress)).unwrap(),
         dispatch(fetchPoolDetails(walletAddress)).unwrap(),
       ]);
       setFromAmount("");
       setToAmount("");
-      toast({ title: "Success", description: "Swap completed!" });
+      toast({ title: "Success", description: "Swap completed!", duration: 3000 });
     } catch (err) {
-      console.error("Swap error:", err);
-      toast({ title: "Swap Failed", description: err.reason || err.message || "Swap error", variant: "destructive" });
+      toast({ title: "Swap Failed", description: err.reason || err.message || "Swap error", variant: "destructive", duration: 3000 });
     }
   };
 
@@ -174,13 +173,13 @@ const Swap = () => {
 
   const handleLimitOrder = async () => {
     if (!canPlaceOrder()) {
-      toast({ title: "Invalid Order", description: "Fill all fields with valid values", variant: "destructive" });
+      toast({ title: "Invalid Order", description: "Fill all fields with valid values", variant: "destructive", duration: 3000 });
       return;
     }
     const amount = parseFloat(limitFromAmount);
     const balance = parseFloat(getBalance(limitFromToken));
     if (amount > balance) {
-      toast({ title: "Insufficient Balance", description: `Only ${balance} ${getTokenSymbol(limitFromToken)} available`, variant: "destructive" });
+      toast({ title: "Insufficient Balance", description: `Only ${balance} ${getTokenSymbol(limitFromToken)} available`, variant: "destructive", duration: 3000 });
       return;
     }
 
@@ -191,15 +190,55 @@ const Swap = () => {
 
     try {
       const result = await dispatch(placeOrder({ token, amount: amountWei, price: priceWei, isBuyOrder })).unwrap();
-      console.log("Limit order result:", result);
       await dispatch(fetchOrders(walletAddress)).unwrap();
       await dispatch(fetchTokenBalances(walletAddress)).unwrap();
       setLimitFromAmount("");
       setLimitPrice("");
-      toast({ title: "Success", description: "Limit order placed!" });
+      toast({ title: "Success", description: "Limit order placed!", duration: 3000 });
     } catch (err) {
-      console.error("Limit order error:", err);
-      toast({ title: "Order Failed", description: err.reason || err.message || "Order error", variant: "destructive" });
+      toast({ title: "Order Failed", description: err.reason || err.message || "Order error", variant: "destructive", duration: 3000 });
+    }
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    if (!walletAddress) {
+      toast({ title: "Error", description: "Connect wallet to cancel order", variant: "destructive", duration: 3000 });
+      return;
+    }
+    try {
+      console.log("Attempting to cancel order:", orderId);
+      await dispatch(cancelOrder({ orderId })).unwrap();
+      await dispatch(fetchOrders(walletAddress)).unwrap();
+      toast({ title: "Success", description: "Order canceled successfully", duration: 3000 });
+    } catch (err) {
+      console.log("Cancel order error:", err);
+      toast({ title: "Cancel Failed", description: err.reason || err.message || "Failed to cancel order", variant: "destructive", duration: 3000 });
+    }
+  };
+
+  const handleExecuteOrder = async (orderId) => {
+    if (!walletAddress) {
+      toast({ title: "Error", description: "Connect wallet to execute order", variant: "destructive", duration: 3000 });
+      return;
+    }
+    if (!poolDetails || !poolDetails.totalLiquidity1 || !poolDetails.totalLiquidity2) {
+      toast({ title: "Error", description: "Liquidity pool data not available", variant: "destructive", duration: 3000 });
+      return;
+    }
+    try {
+      // Use totalLiquidity1 and totalLiquidity2 directly as they are in Wei
+      const marketLiquidity1 = poolDetails.totalLiquidity1;
+      const marketLiquidity2 = poolDetails.totalLiquidity2;
+      console.log("Attempting to execute order:", { orderId, marketLiquidity1: marketLiquidity1.toString(), marketLiquidity2: marketLiquidity2.toString() });
+      await dispatch(executeOrder({ orderId, marketLiquidity1, marketLiquidity2 })).unwrap();
+      await Promise.all([
+        dispatch(fetchOrders(walletAddress)).unwrap(),
+        dispatch(fetchTokenBalances(walletAddress)).unwrap(),
+      ]);
+      toast({ title: "Success", description: "Order executed successfully", duration: 3000 });
+    } catch (err) {
+      console.log("Execute order error:", err);
+      toast({ title: "Execute Failed", description: err.reason || err.message || "Failed to execute order", variant: "destructive", duration: 3000 });
     }
   };
 
@@ -306,7 +345,6 @@ const Swap = () => {
                 {loading ? "Swapping..." : "Swap"}
               </button>
 
-              {/* Debug Button */}
               <button
                 onClick={async () => {
                   const balances = await dispatch(fetchTokenBalances(walletAddress)).unwrap();
@@ -391,21 +429,41 @@ const Swap = () => {
               <div className="mt-6">
                 <h3 className="text-white font-semibold text-lg mb-3">Your Limit Orders</h3>
                 <div className="space-y-2">
-                  {orders.map((order) => (
-                    <div key={order.orderId} className="flex items-center justify-between bg-gray-800 p-2 rounded">
-                      <span className="text-white">
-                        {parseFloat(ethers.formatEther(order.amount)).toFixed(6)} {getTokenSymbol(order.token)} @{" "}
-                        {parseFloat(ethers.formatEther(order.price)).toFixed(6)}
-                      </span>
-                      <span className="text-white">{order.status}</span>
-                    </div>
-                  ))}
+                  {orders
+                    .filter((order) => order.user.toLowerCase() === walletAddress?.toLowerCase() && order.amount !== "0")
+                    .map((order) => (
+                      <div key={order.orderId} className="flex items-center justify-between bg-gray-800 p-2 rounded">
+                        <span className="text-white">
+                          {parseFloat(ethers.formatEther(order.amount)).toFixed(6)} {getTokenSymbol(order.token)} @{" "}
+                          {parseFloat(ethers.formatEther(order.price)).toFixed(6)}
+                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-white">{order.status}</span>
+                          <button
+                            className={`text-sciFiAccent hover:text-sciFiAccentHover ${
+                              loading || order.status !== "active" ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            onClick={() => handleCancelOrder(order.orderId)}
+                            disabled={loading || order.status !== "active"}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className={`text-sciFiAccent hover:text-sciFiAccentHover ${
+                              loading || order.status !== "active" ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            onClick={() => handleExecuteOrder(order.orderId)}
+                            disabled={loading || order.status !== "active"}
+                          >
+                            Execute
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </div>
             </>
           )}
-
-          {error && <div className="mt-4 text-red-500 text-sm">{error}</div>}
         </div>
       </div>
       <OrderBook />

@@ -7,6 +7,7 @@ import {
   fetchPoolDetails,
   fetchAllTokens,
   initialize,
+  distributeRewards,
 } from "../store/slices/liquidityPoolSlice";
 import { fetchAllLiquidityPools } from "../store/slices/adminSlice";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
@@ -43,20 +44,16 @@ export default function Liquidity() {
 
   const dispatch = useDispatch();
   const { address: walletAddress } = useSelector((state) => state.wallet);
-  const { tokens, tokenBalances, poolDetails, loading, error } = useSelector(
-    (state) => state.liquidityPool
-  );
+  const { tokens, tokenBalances, poolDetails, loading, error } = useSelector((state) => state.liquidityPool);
   const { liquidityPools: rawLiquidityPools } = useSelector((state) => state.admin);
 
-  // Deduplicate and filter liquidity pools
   const liquidityPools = Array.from(new Set([...rawLiquidityPools, LIQUIDITY_POOL_ADDRESS])).filter(
     (pool) => ethers.isAddress(pool)
   );
 
-  // Simulated pool data (replace with real contract data if available)
   const poolData = useRef({
-    [LIQUIDITY_POOL_ADDRESS]: { initTime: Date.now() - 7 * 24 * 60 * 60 * 1000 }, // 7 days ago
-    [selectedPool]: { userAddTime: null }, // Updated when liquidity is added
+    [LIQUIDITY_POOL_ADDRESS]: { initTime: Date.now() - 7 * 24 * 60 * 60 * 1000 },
+    [selectedPool]: { userAddTime: null },
   });
 
   useEffect(() => {
@@ -65,92 +62,62 @@ export default function Liquidity() {
       fetchRef.current = true;
       setIsFetching(true);
 
-      const maxRetries = 3;
-      let success = false;
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(`Fetching initial data (attempt ${attempt})...`);
-          await Promise.race([
-            Promise.all([
-              dispatch(fetchAllTokens()).unwrap(),
-              walletAddress && dispatch(fetchTokenBalances(walletAddress)).unwrap(),
-              walletAddress && dispatch(fetchPoolDetails(walletAddress)).unwrap(),
-              walletAddress && dispatch(fetchAllLiquidityPools()).unwrap(),
-            ]),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Timeout fetching data")), 30000)
-            ),
-          ]);
-          console.log("Initial pool details:", poolDetails);
-          setIsInitialized(!!poolDetails.token1 && !!poolDetails.token2 && poolDetails.token1 !== "0x0000000000000000000000000000000000000000");
+      try {
+        // Fetch tokens first to ensure tokens array is populated
+        const tokenList = await dispatch(fetchAllTokens()).unwrap();
 
-          // Fetch token pairs for pools
-          if (walletAddress && liquidityPools.length > 0) {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const pairs = {};
-            for (const poolAddr of liquidityPools) {
-              try {
-                const poolContract = new ethers.Contract(poolAddr, LiquidityPoolABI.abi, provider);
-                const [token1, token2] = await Promise.all([poolContract.token1(), poolContract.token2()]);
-                const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
-                const token2Contract = new ethers.Contract(token2, ERC20_ABI, provider);
-                const [symbol1, symbol2] = await Promise.all([token1Contract.symbol(), token2Contract.symbol()]);
-                pairs[poolAddr] = `${symbol1}/${symbol2}`;
-              } catch (err) {
-                console.error(`Error fetching pair for pool ${poolAddr}:`, err);
-                pairs[poolAddr] = "UNKNOWN/UNKNOWN";
-              }
-            }
-            setPoolPairs(pairs);
-          }
-          success = true;
-          break;
-        } catch (err) {
-          console.error(`Fetch initial data error (attempt ${attempt}):`, err);
-          if (attempt === maxRetries) {
-            toast({
-              title: "Error",
-              description: "Failed to load initial data after retries: " + (err.message || "Unknown error"),
-              variant: "destructive",
-            });
-          } else {
-            const backoff = Math.pow(2, attempt) * 1000;
-            console.log(`Waiting ${backoff / 1000}s before retry...`);
-            await new Promise(resolve => setTimeout(resolve, backoff));
-          }
+        if (walletAddress) {
+          // Fetch balances after tokens are set
+          await dispatch(fetchTokenBalances(walletAddress)).unwrap();
+          const poolData = await dispatch(fetchPoolDetails(walletAddress)).unwrap();
+          await dispatch(fetchAllLiquidityPools()).unwrap();
+
+          const initialized = poolData?.token1 && poolData?.token2 && poolData.token1 !== "0x0000000000000000000000000000000000000000";
+          setIsInitialized(initialized);
         }
-      }
 
-      if (success) {
-        console.log("Fetch succeeded, applying 3s delay...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        if (walletAddress && liquidityPools.length > 0) {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const pairs = {};
+          for (const poolAddr of liquidityPools) {
+            try {
+              const poolContract = new ethers.Contract(poolAddr, LiquidityPoolABI.abi, provider);
+              const [token1, token2] = await Promise.all([poolContract.token1(), poolContract.token2()]);
+              const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
+              const token2Contract = new ethers.Contract(token2, ERC20_ABI, provider);
+              const [symbol1, symbol2] = await Promise.all([token1Contract.symbol(), token2Contract.symbol()]);
+              pairs[poolAddr] = `${symbol1}/${symbol2}`;
+            } catch (err) {
+              pairs[poolAddr] = "UNKNOWN/UNKNOWN";
+            }
+          }
+          setPoolPairs(pairs);
+        }
+
         setIsFetching(false);
-        console.log("Fetching complete with delay");
-
-        // Set initial times
         setTimers({
-          nextInterestTime: Date.now() + 24 * 60 * 60 * 1000, // Next interest in 24h
+          nextInterestTime: Date.now() + 24 * 60 * 60 * 1000,
           currentTime: Date.now(),
         });
+      } catch (err) {
+        toast({
+          title: "Error",
+          description: "Failed to load initial data: " + (err.message || "Unknown error"),
+          variant: "destructive",
+        });
+      } finally {
+        fetchRef.current = false;
       }
-      fetchRef.current = false;
     };
 
-    if (walletAddress) {
-      fetchInitialData();
-    } else {
-      setIsFetching(false);
-    }
+    if (walletAddress) fetchInitialData();
+    else setIsFetching(false);
   }, [dispatch, walletAddress]);
 
-  // Real-time timer updates
   useEffect(() => {
     if (isFetching) return;
     const interval = setInterval(() => {
-      setTimers((prev) => ({
-        ...prev,
-        currentTime: Date.now(),
-      }));
+      setTimers((prev) => ({ ...prev, currentTime: Date.now() }));
     }, 1000);
     return () => clearInterval(interval);
   }, [isFetching]);
@@ -162,39 +129,32 @@ export default function Liquidity() {
     }
   }, [tokens]);
 
-  const getBalance = (tokenAddress) =>
-    tokenBalances[tokenAddress] ? ethers.formatEther(tokenBalances[tokenAddress]) : "0";
+  const getBalance = (tokenAddress) => {
+    const balance = tokenBalances[tokenAddress];
+    return balance ? parseFloat(ethers.formatEther(balance)).toFixed(6) : "0.000000";
+  };
 
   const getFormattedBalance = (tokenAddress) => {
-    const balance = tokenBalances[tokenAddress] || "0";
-    try {
-      return ethers.formatEther(balance);
-    } catch (error) {
-      console.error("Error formatting balance:", error);
-      return "0";
-    }
+    const balance = tokenBalances[tokenAddress];
+    return balance ? parseFloat(ethers.formatEther(balance)).toFixed(6) : "0.000000";
   };
 
-  const getTokenSymbol = (tokenAddress) => {
-    const token = tokens.find((t) => t.address === tokenAddress);
-    return token?.symbol || "UNKNOWN";
-  };
+  const getTokenSymbol = (tokenAddress) => tokens.find((t) => t.address === tokenAddress)?.symbol || "UNKNOWN";
 
-  // Simulated interest and rewards
   const calculateInterest = () => {
-    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24); // Days
+    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24);
     const baseLiquidity = parseFloat(ethers.formatEther(poolDetails.userLiquidity1 || "0"));
-    return (baseLiquidity * 0.05 * timeElapsed).toFixed(4); // 5% daily interest
+    return (baseLiquidity * 0.05 * timeElapsed).toFixed(4);
   };
 
   const calculateRewards = () => {
-    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24); // Days
-    return (10 * timeElapsed).toFixed(4); // 10 reward tokens per day
+    const timeElapsed = (timers.currentTime - (poolData.current[selectedPool]?.userAddTime || timers.currentTime)) / (1000 * 60 * 60 * 24);
+    return (10 * timeElapsed).toFixed(4);
   };
 
   const formatCountdown = (futureTime) => {
     if (!futureTime) return "N/A";
-    const diff = Math.max(0, futureTime - timers.currentTime) / 1000; // Seconds
+    const diff = Math.max(0, futureTime - timers.currentTime) / 1000;
     const hours = Math.floor(diff / 3600);
     const minutes = Math.floor((diff % 3600) / 60);
     const seconds = Math.floor(diff % 60);
@@ -202,82 +162,56 @@ export default function Liquidity() {
   };
 
   const handleInitializePool = async () => {
-    if (!walletAddress) {
-      toast({
-        title: "Wallet Not Connected",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
+    if (!walletAddress || !fromToken || !toToken) {
+      toast({ title: "Error", description: "Connect wallet and select tokens", variant: "destructive" });
       return;
     }
-
     try {
-      if (!fromToken || !toToken) {
-        toast({
-          title: "Invalid Tokens",
-          description: "Please select valid tokens",
-          variant: "destructive",
-        });
-        return;
-      }
-
       setIsAddingLiquidity(true);
-      console.log("Triggering pool initialization...");
-      console.log("Initializing pool with tokens:", { token1: fromToken, token2: toToken });
-      const tx = await dispatch(initialize({ token1: fromToken, token2: toToken })).unwrap();
-      console.log("Initialization transaction:", tx);
-      toast({
-        title: "Success",
-        description: "Liquidity pool initialized successfully",
-      });
+      await dispatch(initialize({ token1: fromToken, token2: toToken })).unwrap();
+      toast({ title: "Success", description: "Pool initialized" });
       await dispatch(fetchPoolDetails(walletAddress)).unwrap();
       setIsInitialized(true);
-      console.log("Pool initialized, new details:", poolDetails);
     } catch (err) {
-      console.error("Initialize pool error:", err);
-      toast({
-        title: "Initialization Failed",
-        description: err.message || "Failed to initialize pool",
-        variant: "destructive",
-      });
+      toast({ title: "Initialization Failed", description: err.message || "Failed to initialize pool", variant: "destructive" });
     } finally {
       setIsAddingLiquidity(false);
     }
   };
 
+  const canAddLiquidity = () => {
+    const amount1Valid = fromAmount && parseFloat(fromAmount) > 0;
+    const amount2Valid = toAmount && parseFloat(toAmount) > 0;
+    const result = amount1Valid && amount2Valid && walletAddress && isInitialized && !isAddingLiquidity && !isFetching;
+    
+    if (!result) {
+      let reason = "";
+      if (!amount1Valid) reason = "Invalid 'From' amount";
+      else if (!amount2Valid) reason = "Invalid 'To' amount";
+      else if (!walletAddress) reason = "Wallet not connected";
+      else if (!isInitialized) reason = "Pool not initialized";
+      else if (isAddingLiquidity) reason = "Liquidity addition in progress";
+      else if (isFetching) reason = "Fetching data";
+      toast({ title: "Cannot Add Liquidity", description: reason, variant: "destructive" });
+      console.log("canAddLiquidity failed:", { amount1Valid, amount2Valid, walletAddress: !!walletAddress, isInitialized, isAddingLiquidity, isFetching });
+    }
+    
+    return result;
+  };
+
   const handleAddLiquidity = async () => {
-    if (!walletAddress) {
-      toast({
-        title: "Wallet Not Connected",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
+    if (!canAddLiquidity()) {
       return;
     }
 
     try {
-      if (!fromAmount || !toAmount) {
-        toast({
-          title: "Invalid Input",
-          description: "Please enter valid amounts for both tokens",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const amount1 = ethers.parseEther(fromAmount);
       const amount2 = ethers.parseEther(toAmount);
       const balance1 = BigInt(tokenBalances[fromToken] || "0");
       const balance2 = BigInt(tokenBalances[toToken] || "0");
 
-      console.log("Adding liquidity:", { amount1, amount2, balance1, balance2 });
-
       if (amount1 > balance1 || amount2 > balance2) {
-        toast({
-          title: "Insufficient Balance",
-          description: "You don’t have enough tokens",
-          variant: "destructive",
-        });
+        toast({ title: "Insufficient Balance", description: "Not enough tokens", variant: "destructive" });
         return;
       }
 
@@ -285,111 +219,77 @@ export default function Liquidity() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      console.log("Approving tokens...");
       const token1Contract = new ethers.Contract(fromToken, ERC20_ABI, signer);
       const token2Contract = new ethers.Contract(toToken, ERC20_ABI, signer);
-      const approvalTx1 = await token1Contract.approve(selectedPool, amount1);
-      await approvalTx1.wait();
-      console.log("Token 1 approved:", approvalTx1.hash);
-      const approvalTx2 = await token2Contract.approve(selectedPool, amount2);
-      await approvalTx2.wait();
-      console.log("Token 2 approved:", approvalTx2.hash);
+      await token1Contract.approve(selectedPool, amount1).then(tx => tx.wait());
+      await token2Contract.approve(selectedPool, amount2).then(tx => tx.wait());
 
-      console.log("Providing liquidity to pool:", selectedPool);
-      await dispatch(
-        provideLiquidity({
-          amount1: amount1.toString(),
-          amount2: amount2.toString(),
-        })
-      ).unwrap();
+      await dispatch(provideLiquidity({ amount1: amount1.toString(), amount2: amount2.toString() })).unwrap();
 
-      toast({
-        title: "Success",
-        description: "Liquidity added successfully",
-      });
-
+      toast({ title: "Success", description: "Liquidity added successfully" });
       poolData.current[selectedPool].userAddTime = Date.now();
-      setTimers((prev) => ({
-        ...prev,
-        nextInterestTime: Date.now() + 24 * 60 * 60 * 1000, // Reset next interest
-      }));
-
+      setTimers((prev) => ({ ...prev, nextInterestTime: Date.now() + 24 * 60 * 60 * 1000 }));
       setFromAmount("");
       setToAmount("");
       await dispatch(fetchTokenBalances(walletAddress)).unwrap();
       await dispatch(fetchPoolDetails(walletAddress)).unwrap();
-      console.log("Updated pool details:", poolDetails);
     } catch (err) {
-      console.error("Add liquidity error:", err);
-      toast({
-        title: "Transaction Failed",
-        description: err.message || "Failed to add liquidity",
-        variant: "destructive",
-      });
+      toast({ title: "Transaction Failed", description: err.message || "Failed to add liquidity", variant: "destructive" });
     } finally {
       setIsAddingLiquidity(false);
     }
   };
 
   const handleRemoveLiquidity = async () => {
-    if (!walletAddress) {
-      toast({
-        title: "Wallet Not Connected",
-        description: "Please connect your wallet first",
-        variant: "destructive",
-      });
+    if (!walletAddress || !removeAmount1 || !removeAmount2) {
+      toast({ title: "Invalid Input", description: "Enter valid amounts", variant: "destructive" });
       return;
     }
 
     try {
-      if (!removeAmount1 || !removeAmount2) {
-        toast({
-          title: "Invalid Input",
-          description: "Please enter valid amounts to remove",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const amount1 = ethers.parseEther(removeAmount1);
       const amount2 = ethers.parseEther(removeAmount2);
       const userLiquidity1 = BigInt(poolDetails.userLiquidity1 || "0");
       const userLiquidity2 = BigInt(poolDetails.userLiquidity2 || "0");
 
-      console.log("Removing liquidity:", { amount1, amount2, userLiquidity1, userLiquidity2 });
-
       if (amount1 > userLiquidity1 || amount2 > userLiquidity2) {
-        toast({
-          title: "Insufficient Liquidity",
-          description: "You don’t have enough liquidity to remove",
-          variant: "destructive",
-        });
+        toast({ title: "Insufficient Liquidity", description: "Not enough liquidity", variant: "destructive" });
         return;
       }
 
-      await dispatch(
-        removeLiquidity({
-          amount1: amount1.toString(),
-          amount2: amount2.toString(),
-        })
-      ).unwrap();
-
-      toast({
-        title: "Success",
-        description: "Liquidity removed successfully",
-      });
-
+      await dispatch(removeLiquidity({ amount1: amount1.toString(), amount2: amount2.toString() })).unwrap();
+      toast({ title: "Success", description: "Liquidity removed successfully" });
       setRemoveAmount1("");
       setRemoveAmount2("");
       await dispatch(fetchTokenBalances(walletAddress)).unwrap();
       await dispatch(fetchPoolDetails(walletAddress)).unwrap();
     } catch (err) {
-      console.error("Remove liquidity error:", err);
-      toast({
-        title: "Transaction Failed",
-        description: err.message || "Failed to remove liquidity",
-        variant: "destructive",
-      });
+      toast({ title: "Transaction Failed", description: err.message || "Failed to remove liquidity", variant: "destructive" });
+    }
+  };
+
+  const handleClaimRewards = async () => {
+    if (!walletAddress) {
+      toast({ title: "Error", description: "Connect wallet to claim rewards", variant: "destructive" });
+      return;
+    }
+
+    // Assume poolDetails.pendingRewards exists; adjust based on actual slice
+    const pendingRewards = poolDetails.pendingRewards ? parseFloat(ethers.formatEther(poolDetails.pendingRewards)) : parseFloat(calculateRewards());
+    if (pendingRewards <= 0) {
+      toast({ title: "No Rewards", description: "No rewards available to claim", variant: "destructive" });
+      return;
+    }
+
+    try {
+      console.log("Attempting to claim rewards for:", walletAddress);
+      await dispatch(distributeRewards()).unwrap();
+      toast({ title: "Success", description: "Rewards claimed successfully" });
+      await dispatch(fetchTokenBalances(walletAddress)).unwrap();
+      await dispatch(fetchPoolDetails(walletAddress)).unwrap();
+    } catch (err) {
+      console.log("Claim rewards error:", err.message);
+      toast({ title: "Transaction Failed", description: err.message || "Failed to claim rewards", variant: "destructive" });
     }
   };
 
@@ -404,10 +304,7 @@ export default function Liquidity() {
 
   return (
     <div className="bg-sciFiBg text-sciFiText font-sans min-h-screen">
-      {error && (
-        <div className="text-red-500 text-center py-4">Error: {error}</div>
-      )}
-      {/* Instructions Section */}
+      {error && <div className="text-red-500 text-center py-4">Error: {error}</div>}
       <section className="pt-24 px-4 bg-gradient-to-b from-sciFiBg via-gray-900 to-gray-800">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl md:text-6xl font-extrabold text-sciFiAccent mb-12 animate-pulse">
@@ -460,7 +357,6 @@ export default function Liquidity() {
         </div>
       </section>
 
-      {/* Main Actions Section */}
       <section className="py-16 px-4 bg-gray-800 relative">
         <div className="max-w-lg mx-auto">
           <Card className="w-full bg-gray-800 border-gray-700">
@@ -496,7 +392,6 @@ export default function Liquidity() {
               )}
               {activeTab === "addLiquidity" ? (
                 <div>
-                  {/* Pool Selection */}
                   <div className="mb-4">
                     <label className="text-white font-semibold text-lg mb-2 block">Select Pool</label>
                     <select
@@ -514,11 +409,9 @@ export default function Liquidity() {
                     </select>
                   </div>
 
-                  {(!poolDetails.token1 || !poolDetails.token2 || poolDetails.token1 === "0x0000000000000000000000000000000000000000") && (
+                  {(!isInitialized) && (
                     <div className="mb-4">
-                      <p className="text-white text-sm mb-2">
-                        Pool not initialized. Select tokens and initialize:
-                      </p>
+                      <p className="text-white text-sm mb-2">Pool not initialized. Select tokens and initialize:</p>
                       <button
                         className={`btn-glow nav-button py-2 px-4 rounded-lg w-full ${
                           isAddingLiquidity || !walletAddress || isFetching
@@ -572,7 +465,7 @@ export default function Liquidity() {
                     <div className="flex items-center mb-3">
                       <label className="text-white font-semibold text-lg">To</label>
                       <span className="text-white ml-2">
-                        Balance:  {getFormattedBalance(toToken)} {getTokenSymbol(toToken)}
+                        Balance: {getFormattedBalance(toToken)} {getTokenSymbol(toToken)}
                       </span>
                     </div>
                     <div className="flex items-center mb-4">
@@ -607,21 +500,15 @@ export default function Liquidity() {
                       <div className="bg-gray-900 p-4 rounded-lg shadow-lg">
                         <p className="text-white text-sm flex items-center justify-between">
                           <span>{getTokenSymbol(fromToken)} per {getTokenSymbol(toToken)}:</span>
-                          <span className="text-sciFiAccent font-semibold">
-                            {poolDetails?.token1PerToken2 || "0"}
-                          </span>
+                          <span className="text-sciFiAccent font-semibold">{poolDetails?.token1PerToken2 || "0"}</span>
                         </p>
                         <p className="text-white text-sm flex items-center justify-between">
                           <span>{getTokenSymbol(toToken)} per {getTokenSymbol(fromToken)}:</span>
-                          <span className="text-sciFiAccent font-semibold">
-                            {poolDetails?.token2PerToken1 || "0"}
-                          </span>
+                          <span className="text-sciFiAccent font-semibold">{poolDetails?.token2PerToken1 || "0"}</span>
                         </p>
                         <p className="text-white text-sm flex items-center justify-between">
                           <span>Share of Pool:</span>
-                          <span className="text-sciFiAccent font-semibold">
-                            {poolDetails?.poolShare || "0%"}
-                          </span>
+                          <span className="text-sciFiAccent font-semibold">{poolDetails?.poolShare || "0%"}</span>
                         </p>
                       </div>
                     </div>
@@ -629,14 +516,23 @@ export default function Liquidity() {
 
                   <button
                     className={`btn-glow nav-button py-3 px-6 rounded-lg w-full ${
-                      isAddingLiquidity || !walletAddress || !isInitialized || isFetching
-                        ? "opacity-50 cursor-not-allowed"
-                        : "hover:bg-sciFiAccentHover"
+                      !canAddLiquidity() ? "opacity-50 cursor-not-allowed" : "hover:bg-sciFiAccentHover"
                     }`}
                     onClick={handleAddLiquidity}
-                    disabled={isAddingLiquidity || !walletAddress || !isInitialized || isFetching}
+                    disabled={!canAddLiquidity()}
                   >
                     {isAddingLiquidity ? "Processing..." : "Add Liquidity"}
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (walletAddress) {
+                        await dispatch(fetchTokenBalances(walletAddress)).unwrap();
+                      }
+                    }}
+                    className="mt-2 text-sciFiAccent hover:text-sciFiAccentHover"
+                  >
+                    Refresh Balances
                   </button>
                 </div>
               ) : (
@@ -714,6 +610,17 @@ export default function Liquidity() {
                     disabled={loading || !walletAddress || isFetching}
                   >
                     {loading ? "Processing..." : "Remove Liquidity"}
+                  </button>
+                  <button
+                    className={`btn-glow nav-button py-3 px-6 rounded-lg w-full mt-2 ${
+                      loading || !walletAddress || isFetching || parseFloat(calculateRewards()) <= 0
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:bg-sciFiAccentHover"
+                    }`}
+                    onClick={handleClaimRewards}
+                    disabled={loading || !walletAddress || isFetching || parseFloat(calculateRewards()) <= 0}
+                  >
+                    {loading ? "Processing..." : "Claim Rewards"}
                   </button>
                 </div>
               )}

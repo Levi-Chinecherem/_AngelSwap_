@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { ethers } from "ethers"; // Import full ethers library
+import { ethers } from "ethers";
 import {
   createLiquidityPool,
   addTokenToOrderBook,
@@ -28,6 +28,12 @@ const AdminPage = () => {
   const [connecting, setConnecting] = useState(false);
   const [poolDetails, setPoolDetails] = useState({}); // Store pool address -> {token1Symbol/token2Symbol}
   const [tokenSymbols, setTokenSymbols] = useState({}); // Store token address -> symbol
+
+  // Parse admin wallet addresses from .env
+  const adminAddresses = (process.env.REACT_APP_ADMIN_WALLET_ADDRESSES || process.env.REACT_APP_ADMIN_WALLET_ADDRESS || "")
+    .split(",")
+    .map(addr => addr.trim().toLowerCase())
+    .filter(addr => addr && ethers.isAddress(addr)); // Ensure valid addresses
 
   // Handle create liquidity pool
   const handleCreateLiquidityPool = async () => {
@@ -106,11 +112,7 @@ const AdminPage = () => {
 
         setWalletAddress(address);
         setIsConnected(true);
-
-        const adminAddress = process.env.REACT_APP_ADMIN_WALLET_ADDRESS;
-        if (adminAddress) {
-          setIsAdmin(address.toLowerCase() === adminAddress.toLowerCase());
-        }
+        setIsAdmin(adminAddresses.includes(address.toLowerCase()));
       }
     } catch (error) {
       console.error("Connection error:", error);
@@ -137,11 +139,7 @@ const AdminPage = () => {
 
             setWalletAddress(address);
             setIsConnected(true);
-
-            const adminAddress = process.env.REACT_APP_ADMIN_WALLET_ADDRESS;
-            if (adminAddress) {
-              setIsAdmin(address.toLowerCase() === adminAddress.toLowerCase());
-            }
+            setIsAdmin(adminAddresses.includes(address.toLowerCase()));
           }
         } catch (error) {
           console.error("Error checking connection:", error);
@@ -150,7 +148,7 @@ const AdminPage = () => {
     };
 
     checkConnection();
-  }, []);
+  }, [adminAddresses]);
 
   // Handle wallet events
   useEffect(() => {
@@ -164,11 +162,7 @@ const AdminPage = () => {
 
         setWalletAddress(address);
         setIsConnected(true);
-
-        const adminAddress = process.env.REACT_APP_ADMIN_WALLET_ADDRESS;
-        if (adminAddress) {
-          setIsAdmin(address.toLowerCase() === adminAddress.toLowerCase());
-        }
+        setIsAdmin(adminAddresses.includes(address.toLowerCase()));
       } else {
         setWalletAddress("");
         setIsConnected(false);
@@ -187,7 +181,7 @@ const AdminPage = () => {
       window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
       window.ethereum.removeListener("chainChanged", handleChainChanged);
     };
-  }, []);
+  }, [adminAddresses]);
 
   // Fetch data when connected
   useEffect(() => {
@@ -294,7 +288,7 @@ const AdminPage = () => {
       ) : !isAdmin ? (
         <div className="text-center pt-20 py-12">
           <h2 className="text-2xl font-bold text-red-500">Access Denied</h2>
-          <p className="text-gray-400">Only the admin can access this page.</p>
+          <p className="text-gray-400">Only admins can access this page.</p>
           <p className="text-gray-400 mt-4">
             Connected Wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
           </p>
