@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { ethers } from "ethers";
-import { fetchOrders } from "../store/slices/orderBookSlice";
+import { fetchOrders, clearError } from "../store/slices/orderBookSlice";
 import { fetchAllTokens } from "../store/slices/liquidityPoolSlice";
 import { toast } from "../components/ui/use-toast";
 import { LIQUIDITY_POOL_ADDRESS, ORDER_BOOK_ADDRESS } from "../contracts/addresses";
+import OrderBookArtifact from "../contracts/OrderBook.sol/OrderBook.json";
 
 const Mempool = () => {
   const dispatch = useDispatch();
@@ -21,23 +22,65 @@ const Mempool = () => {
   const loading = orderLoading || tokenLoading;
   const error = orderError || tokenError;
 
+  const OrderBookABI = OrderBookArtifact.abi;
+  const orderBookInterface = new ethers.Interface(OrderBookABI);
+  const placeOrderSelector = orderBookInterface.getFunction("placeOrder").selector;
+
   useEffect(() => {
     const fetchData = async () => {
-      if (!walletAddress) return;
+      if (!walletAddress) {
+        toast({
+          title: "Wallet Not Connected",
+          description: "Please connect your wallet to view mempool and orders.",
+          variant: "destructive",
+          duration: 3000,
+        });
+        return;
+      }
       try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
         await Promise.all([
-          dispatch(fetchOrders(walletAddress)),
-          dispatch(fetchAllTokens()),
+          dispatch(fetchOrders(walletAddress)).unwrap(),
+          dispatch(fetchAllTokens()).unwrap(),
         ]);
 
-        const provider = new ethers.BrowserProvider(window.ethereum);
         const pendingBlock = await provider.getBlock("pending");
         if (pendingBlock && pendingBlock.transactions) {
           const formattedPendingTxs = await Promise.all(
             pendingBlock.transactions.slice(0, 10).map(async (txHash) => {
               const tx = await provider.getTransaction(txHash);
               const amount = tx.value ? ethers.formatEther(tx.value) : "0";
-              // Filter for transactions related to your contracts or with non-zero ETH
+
+              // Check if transaction is a placeOrder call to OrderBook
+              if (tx.to === ORDER_BOOK_ADDRESS && tx.data.startsWith(placeOrderSelector)) {
+                try {
+                  const decoded = orderBookInterface.parseTransaction({ data: tx.data });
+                  const isPrivate = decoded.args[4]; // isPrivate is the 5th parameter
+                  if (isPrivate && tx.from.toLowerCase() !== walletAddress.toLowerCase()) {
+                    return {
+                      id: txHash,
+                      sender: "******",
+                      receiver: "******",
+                      amount: "******",
+                      type: "Private Order Tx",
+                      status: "pending",
+                    };
+                  }
+                  return {
+                    id: txHash,
+                    sender: tx.from,
+                    receiver: tx.to || "Unknown",
+                    amount: `${ethers.formatEther(decoded.args[1])} ${getTokenSymbol(decoded.args[0])}`, // amount, token
+                    type: decoded.args[3] ? "Buy Order Tx" : "Sell Order Tx", // isBuyOrder
+                    status: "pending",
+                  };
+                } catch (err) {
+                  console.error(`Error decoding transaction ${txHash}:`, err);
+                  return null; // Exclude if decoding fails
+                }
+              }
+
+              // Include non-zero ETH txs or those to relevant contracts
               if (amount !== "0" || tx.to === LIQUIDITY_POOL_ADDRESS || tx.to === ORDER_BOOK_ADDRESS) {
                 return {
                   id: txHash,
@@ -51,20 +94,34 @@ const Mempool = () => {
               return null;
             })
           );
-          setPendingTxs(formattedPendingTxs.filter(tx => tx !== null));
+          setPendingTxs(formattedPendingTxs.filter((tx) => tx !== null));
         }
       } catch (err) {
         toast({
           title: "Error",
-          description: "Failed to fetch mempool data",
+          description: err.message || "Failed to fetch mempool data",
           variant: "destructive",
+          duration: 3000,
         });
+        dispatch(clearError());
       }
     };
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30s instead of 60s
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [dispatch, walletAddress]);
+  }, [dispatch, walletAddress, placeOrderSelector]);
+
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "Error",
+        description: error,
+        variant: "destructive",
+        duration: 3000,
+      });
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
 
   const getTokenSymbol = (tokenAddress) =>
     tokens.find((t) => t.address === tokenAddress)?.symbol || "UNKNOWN";
@@ -72,19 +129,32 @@ const Mempool = () => {
   useEffect(() => {
     if (orders && orders.length > 0) {
       const formattedOrders = orders
-        .filter((order) => order.status === "active" && order.amount !== "0") // Filter out 0-amount orders
-        .map((order) => ({
-          id: order.orderId,
-          sender: order.user,
-          receiver: "Order Book",
-          amount: `${ethers.formatEther(order.amount)} ${getTokenSymbol(order.token)}`,
-          price: ethers.formatEther(order.price),
-          type: order.isBuyOrder ? "Buy Order" : "Sell Order",
-          status: order.status,
-        }));
+        .filter((order) => order.status === "active" && order.amount !== "0")
+        .map((order) => {
+          if (order.isPrivate && order.user.toLowerCase() !== walletAddress?.toLowerCase()) {
+            return {
+              id: order.orderId,
+              sender: "******",
+              receiver: "******",
+              amount: "******",
+              price: "******",
+              type: "Private Order",
+              status: order.status,
+            };
+          }
+          return {
+            id: order.orderId,
+            sender: order.user,
+            receiver: "Order Book",
+            amount: `${ethers.formatEther(order.amount)} ${getTokenSymbol(order.token)}`,
+            price: ethers.formatEther(order.price),
+            type: order.isBuyOrder ? "Buy Order" : "Sell Order",
+            status: order.status,
+          };
+        });
       setActiveOrders(formattedOrders);
     }
-  }, [orders, tokens]);
+  }, [orders, tokens, walletAddress]);
 
   const renderPendingTxs = () => {
     const startIndex = (txPage - 1) * transactionsPerPage;
@@ -94,9 +164,9 @@ const Mempool = () => {
     return currentTxs.map((tx) => (
       <tr className="border-t border-gray-700" key={tx.id}>
         <td className="px-6 py-4 text-gray-300">{tx.id.slice(0, 6)}...</td>
-        <td className="px-6 py-4 text-gray-300">{tx.sender.slice(0, 6)}...</td>
-        <td className="px-6 py-4 text-gray-300">{tx.receiver.slice(0, 6)}...</td>
-        <td className="px-6 py-4 text-gray-300">{tx.amount} ETH</td>
+        <td className="px-6 py-4 text-gray-300">{tx.sender}</td>
+        <td className="px-6 py-4 text-gray-300">{tx.receiver}</td>
+        <td className="px-6 py-4 text-gray-300">{tx.amount}</td>
         <td className="px-6 py-4 text-gray-300">-</td>
         <td className="px-6 py-4 text-gray-300">{tx.type}</td>
         <td className="px-6 py-4 text-gray-300">{tx.status}</td>
@@ -112,7 +182,7 @@ const Mempool = () => {
     return currentOrders.map((order) => (
       <tr className="border-t border-gray-700" key={order.id}>
         <td className="px-6 py-4 text-gray-300">{order.id}</td>
-        <td className="px-6 py-4 text-gray-300">{order.sender.slice(0, 6)}...</td>
+        <td className="px-6 py-4 text-gray-300">{order.sender}</td>
         <td className="px-6 py-4 text-gray-300">{order.receiver}</td>
         <td className="px-6 py-4 text-gray-300">{order.amount}</td>
         <td className="px-6 py-4 text-gray-300">{order.price}</td>
@@ -156,43 +226,8 @@ const Mempool = () => {
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sciFiAccent"></div>
             </div>
-          ) : error ? (
-            <div className="text-center py-12">
-              <p className="text-red-500">Error: {error}</p>
-            </div>
           ) : (
             <>
-            {/* Active Orders */}
-            <div className="text-center">
-                <h2 className="text-3xl font-bold mb-4 text-sciFiAccent">Active Order Book Orders</h2>
-                <p className="text-lg mb-6">
-                  {activeOrders.length === 0 ? "No active orders." : `Active Orders: ${activeOrders.length}`}
-                </p>
-                {activeOrders.length > 0 && (
-                  <div className="overflow-x-auto shadow-xl rounded-lg bg-gray-900">
-                    <table className="min-w-full text-left">
-                      <thead className="bg-gray-800">
-                        <tr>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Order ID</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Sender</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Receiver</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Amount</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Price</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Type</th>
-                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>{renderOrders()}</tbody>
-                    </table>
-                  </div>
-                )}
-                {activeOrders.length > transactionsPerPage && (
-                  <div className="mt-8 flex justify-center space-x-2">
-                    {updatePagination(activeOrders, orderPage, setOrderPage)}
-                  </div>
-                )}
-              </div>
-
               {/* Pending Blockchain Transactions */}
               <div className="text-center mb-12">
                 <h2 className="text-3xl font-bold mb-4 text-sciFiAccent">Pending Blockchain Transactions</h2>
@@ -224,7 +259,36 @@ const Mempool = () => {
                 )}
               </div>
 
-              
+              {/* Active Order Book Orders */}
+              <div className="text-center">
+                <h2 className="text-3xl font-bold mb-4 text-sciFiAccent">Active Order Book Orders</h2>
+                <p className="text-lg mb-6">
+                  {activeOrders.length === 0 ? "No active orders." : `Active Orders: ${activeOrders.length}`}
+                </p>
+                {activeOrders.length > 0 && (
+                  <div className="overflow-x-auto shadow-xl rounded-lg bg-gray-900">
+                    <table className="min-w-full text-left">
+                      <thead className="bg-gray-800">
+                        <tr>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Order ID</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Sender</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Receiver</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Amount</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Price</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Type</th>
+                          <th className="px-6 py-4 text-lg font-semibold text-sciFiAccent">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>{renderOrders()}</tbody>
+                    </table>
+                  </div>
+                )}
+                {activeOrders.length > transactionsPerPage && (
+                  <div className="mt-8 flex justify-center space-x-2">
+                    {updatePagination(activeOrders, orderPage, setOrderPage)}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
